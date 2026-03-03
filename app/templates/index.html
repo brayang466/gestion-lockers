@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Gestor de Lockers</h1>
+<p>Base de lockers:</p>
+<div class="locker-list">
+    {% if lockers %}
+        {% for locker in lockers %}
+        <div class="locker">
+            <span><strong>{{ locker.codigo }}</strong></span>
+            <span class="estado {{ locker.estado }}">{{ locker.estado }}</span>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p class="empty">No hay lockers. Ejecuta database/crear_bd.sql e importa desde datos_importar/.</p>
+    {% endif %}
+</div>
+{% endblock %}

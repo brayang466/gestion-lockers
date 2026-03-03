@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Gestor de Lockers{% endblock %}
+{% block content %}
+<div class="dashboard-layout">
+    <aside class="dashboard-sidebar" aria-label="Módulos">
+        <h2>Módulos</h2>
+        <ul class="modulos modulos-vertical">
+            {% for mid, cfg in modulos_config.items() %}
+            <li>
+                <a href="{{ url_for('main.modulo', modulo_id=mid) }}" class="modulo-link">
+                    <span class="modulo-icon" aria-hidden="true">
+                        {% set icons = ['📦', '🔓', '📋', '✅', '👤', '📊', '🔗', '📤', '➕', '📥'] %}
+                        {{ icons[loop.index0 % 10] }}
+                    </span>
+                    <span class="modulo-text">
+                        <span class="modulo-titulo">{{ cfg.titulo }}</span>
+                    </span>
+                    <span class="modulo-arrow" aria-hidden="true">→</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+    </aside>
+    <div class="dashboard-main">
+        <header class="dashboard-header">
+            <h1>Dashboard</h1>
+            <p class="hint">Resumen del sistema y estadísticas</p>
+        </header>
+        <section class="cards" aria-label="Estadísticas">
+            <div class="card">
+                <div class="card-value">{{ total_lockers }}</div>
+                <div class="card-label">Total lockers</div>
+            </div>
+            <div class="card">
+                <div class="card-value">{{ disponibles }}</div>
+                <div class="card-label">Disponibles</div>
+            </div>
+            <div class="card">
+                <div class="card-value">{{ total_dotaciones }}</div>
+                <div class="card-label">Dotaciones</div>
+            </div>
+            <div class="card">
+                <div class="card-value">{{ dotaciones_disponibles }}</div>
+                <div class="card-label">En stock</div>
+            </div>
+            <div class="card">
+                <div class="card-value">{{ total_personal }}</div>
+                <div class="card-label">Personal</div>
+            </div>
+            <div class="card">
+                <div class="card-value">{{ total_asignaciones }}</div>
+                <div class="card-label">Asignaciones</div>
+            </div>
+            <div class="card">
+                <div class="card-value">{{ total_retiros }}</div>
+                <div class="card-label">Retiros</div>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

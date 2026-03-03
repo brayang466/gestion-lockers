@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Gestor de Lockers{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --rojo: #c41e3a;
+            --rojo-oscuro: #9e1830;
+            --rojo-claro: #fef2f2;
+            --verde: #15803d;
+            --verde-oscuro: #166534;
+            --verde-claro: #f0fdf4;
+            --blanco: #ffffff;
+            --gris-bg: #f8fafc;
+            --gris-texto: #334155;
+            --gris-muted: #64748b;
+            --sombra: 0 1px 3px rgba(0,0,0,0.08);
+            --sombra-hover: 0 4px 12px rgba(21, 128, 61, 0.2);
+            --radio: 10px;
+            --radio-lg: 14px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: var(--gris-bg);
+            color: var(--gris-texto);
+            line-height: 1.5;
+        }
+        .layout {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0 1.5rem;
+            height: 56px;
+            background: var(--verde);
+            color: var(--blanco);
+            box-shadow: var(--sombra);
+        }
+        .nav-title {
+            font-weight: 700;
+            font-size: 1.15rem;
+            color: var(--blanco);
+            text-decoration: none;
+            letter-spacing: -0.02em;
+        }
+        .nav-title:hover { opacity: 0.95; }
+        .nav-timer {
+            font-size: 0.8rem;
+            opacity: 0.95;
+            font-variant-numeric: tabular-nums;
+            padding: 0.25rem 0.5rem;
+            background: rgba(255,255,255,0.2);
+            border-radius: 6px;
+        }
+        .nav-user {
+            font-size: 0.875rem;
+            opacity: 0.95;
+        }
+        .nav-spacer { margin-left: auto; display: flex; align-items: center; gap: 0.75rem; }
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--blanco);
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .nav-link:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .container {
+            flex: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1.5rem 1rem;
+            width: 100%;
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--gris-texto);
+            margin: 0 0 0.25rem;
+            letter-spacing: -0.02em;
+        }
+        h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--gris-texto);
+            margin: 1.5rem 0 0.75rem;
+        }
+        .dashboard-header {
+            margin-bottom: 1rem;
+            padding: 1rem 1.25rem;
+            background: var(--blanco);
+            border-radius: var(--radio-lg);
+            box-shadow: var(--sombra);
+            border-left: 4px solid var(--verde);
+        }
+        .hint { font-size: 0.875rem; color: var(--gris-muted); margin: 0.5rem 0 0; }
+
+        /* Cards estadísticas */
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0 1.5rem;
+        }
+        .card {
+            background: var(--blanco);
+            padding: 1.25rem;
+            border-radius: var(--radio-lg);
+            box-shadow: var(--sombra);
+            border-left: 4px solid var(--verde);
+            transition: box-shadow 0.2s, transform 0.2s;
+        }
+        .card:hover {
+            box-shadow: var(--sombra-hover);
+            transform: translateY(-2px);
+        }
+        .card-value { font-size: 1.75rem; font-weight: 700; color: var(--verde); line-height: 1.2; }
+        .card-label { font-size: 0.8rem; color: var(--gris-muted); margin-top: 0.35rem; font-weight: 500; }
+
+        /* Grid de módulos */
+        .modulos {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 1rem;
+        }
+        .modulos li {
+            margin: 0;
+            padding: 0;
+        }
+        .modulo-link {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            background: var(--blanco);
+            border-radius: var(--radio-lg);
+            box-shadow: var(--sombra);
+            text-decoration: none;
+            color: var(--gris-texto);
+            font-weight: 600;
+            font-size: 0.95rem;
+            border: 2px solid transparent;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+        .modulo-link:hover {
+            border-color: var(--verde);
+            box-shadow: var(--sombra-hover);
+            background: var(--verde-claro);
+        }
+        .modulo-link:active { transform: scale(0.99); }
+        .modulo-icon {
+            width: 44px;
+            height: 44px;
+            flex-shrink: 0;
+            background: var(--verde-claro);
+            color: var(--verde);
+            border-radius: var(--radio);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+        .modulo-link:hover .modulo-icon {
+            background: var(--verde);
+            color: var(--blanco);
+        }
+        .modulo-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .modulo-titulo { font-weight: 600; color: var(--gris-texto); }
+        .modulo-desc { font-size: 0.8rem; font-weight: 400; color: var(--gris-muted); margin-top: 0.2rem; }
+        .modulo-arrow {
+            flex-shrink: 0;
+            color: var(--gris-muted);
+            transition: color 0.2s, transform 0.2s;
+        }
+        .modulo-link:hover .modulo-arrow {
+            color: var(--verde);
+            transform: translateX(4px);
+        }
+
+        .empty { color: var(--gris-muted); font-style: italic; }
+        .estado { padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.8rem; font-weight: 500; }
+        .estado.disponible { background: var(--verde-claro); color: var(--verde-oscuro); }
+        .estado.ocupado { background: var(--rojo-claro); color: var(--rojo-oscuro); }
+        .estado.mantenimiento { background: #fef9c3; color: #854d0e; }
+
+        /* Flash */
+        .flash { padding: 0.75rem 1rem; border-radius: var(--radio); margin-bottom: 1rem; font-size: 0.9rem; font-weight: 500; }
+        .flash-error { background: var(--rojo-claro); color: var(--rojo-oscuro); }
+        .flash-success { background: var(--verde-claro); color: var(--verde-oscuro); }
+
+        /* Botones */
+        .modulo-actions { margin-bottom: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.55rem 1rem;
+            border-radius: var(--radio);
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            border: none;
+            font-family: inherit;
+            transition: background 0.2s, transform 0.1s;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-crear { background: var(--verde); color: var(--blanco); }
+        .btn-crear:hover { background: var(--verde-oscuro); }
+        .btn-back { background: var(--blanco); color: var(--gris-texto); border: 2px solid #e2e8f0; }
+        .btn-back:hover { background: var(--gris-bg); border-color: var(--verde); color: var(--verde); }
+        .btn-primary { background: var(--verde); color: var(--blanco); }
+        .btn-primary:hover { background: var(--verde-oscuro); }
+        .btn-cancel { background: var(--blanco); color: var(--gris-texto); border: 2px solid #e2e8f0; margin-left: 0.5rem; }
+        .btn-cancel:hover { border-color: var(--gris-muted); }
+
+        /* Formulario módulo */
+        .modulo-form-wrap {
+            background: var(--blanco);
+            padding: 1.5rem;
+            border-radius: var(--radio-lg);
+            box-shadow: var(--sombra);
+            margin-bottom: 1.5rem;
+            max-width: 560px;
+            border-top: 4px solid var(--verde);
+        }
+        .modulo-form-wrap h2 { font-size: 1.1rem; margin: 0 0 1rem; color: var(--gris-texto); }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; font-size: 0.875rem; font-weight: 600; color: var(--gris-texto); margin-bottom: 0.35rem; }
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: var(--verde);
+        }
+        .form-actions { margin-top: 1rem; }
+
+        /* Tabla módulo */
+        .modulo-table-wrap {
+            overflow-x: auto;
+            background: var(--blanco);
+            border-radius: var(--radio-lg);
+            box-shadow: var(--sombra);
+        }
+        .modulo-table { width: 100%; border-collapse: collapse; }
+        .modulo-table th, .modulo-table td {
+            padding: 0.7rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid #f1f5f9;
+            font-size: 0.9rem;
+        }
+        .modulo-table th {
+            background: var(--gris-bg);
+            font-weight: 600;
+            color: var(--gris-texto);
+        }
+        .modulo-table tbody tr:hover { background: var(--verde-claro); }
+        .modulo-table .th-actions { text-align: right; }
+        .modulo-table .td-actions { text-align: right; white-space: nowrap; }
+        .modulo-table .td-actions .btn-editar,
+        .modulo-table .td-actions .btn-eliminar {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-family: inherit;
+            text-decoration: none;
+            font-weight: 500;
+            border-radius: 6px;
+            transition: background 0.2s, color 0.2s;
+        }
+        .modulo-table .td-actions .btn-editar { color: var(--verde-oscuro); }
+        .modulo-table .td-actions .btn-editar:hover { background: var(--verde-claro); }
+        .modulo-table .td-actions .btn-eliminar { color: var(--rojo-oscuro); }
+        .modulo-table .td-actions .btn-eliminar:hover { background: var(--rojo-claro); }
+        .modulo-table .td-actions .icon { width: 1rem; height: 1rem; flex-shrink: 0; }
+        .form-eliminar { display: inline; margin-left: 0.35rem; }
+
+        /* Dashboard: layout dos columnas — módulos izquierda (vertical), contenido derecha */
+        .dashboard-layout {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-start;
+        }
+        .dashboard-sidebar {
+            flex-shrink: 0;
+            width: 240px;
+            background: var(--blanco);
+            border-radius: var(--radio-lg);
+            box-shadow: var(--sombra);
+            padding: 1rem;
+            border-left: 4px solid var(--verde);
+        }
+        .dashboard-sidebar h2 {
+            margin: 0 0 0.75rem;
+            font-size: 1rem;
+            color: var(--verde-oscuro);
+        }
+        .modulos-vertical {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        .modulos-vertical li { margin: 0; padding: 0; }
+        .modulos-vertical .modulo-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 0.75rem;
+            font-size: 0.875rem;
+        }
+        .modulos-vertical .modulo-icon {
+            width: 36px;
+            height: 36px;
+            font-size: 1.1rem;
+        }
+        .dashboard-main {
+            flex: 1;
+            min-width: 0;
+        }
+        .dashboard-main .dashboard-header {
+            margin-bottom: 1rem;
+            background: transparent;
+            padding: 0;
+            box-shadow: none;
+            border-left: none;
+        }
+        .dashboard-main .dashboard-header h1 {
+            margin: 0 0 0.25rem;
+            font-size: 1.35rem;
+            color: var(--verde-oscuro);
+        }
+
+        @media (min-width: 640px) {
+            .cards { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+        }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        {% if session.get('user_id') %}
+        <nav class="nav">
+            <a href="{{ url_for('main.dashboard') }}" class="nav-title">Gestor de Lockers</a>
+            <span class="nav-spacer">
+                <span class="nav-timer" id="sessionTimer" aria-label="Tiempo en sesión">00:00:00</span>
+                <span class="nav-user">{{ session.get('user_nombre', '') }}</span>
+                <a href="{{ url_for('main.logout') }}" class="nav-link" onclick="sessionStorage.removeItem('gestor_session_start');">Cerrar sesión</a>
+            </span>
+        </nav>
+        {% endif %}
+        <main class="container">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    {% if session.get('user_id') %}
+    <script>
+    (function() {
+        var key = 'gestor_session_start';
+        if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, Date.now().toString());
+        var start = parseInt(sessionStorage.getItem(key), 10);
+        function pad(n) { return (n < 10 ? '0' : '') + n; }
+        function updateTimer() {
+            var elapsed = Math.floor((Date.now() - start) / 1000);
+            var h = Math.floor(elapsed / 3600);
+            var m = Math.floor((elapsed % 3600) / 60);
+            var s = elapsed % 60;
+            var el = document.getElementById('sessionTimer');
+            if (el) el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+        }
+        updateTimer();
+        setInterval(updateTimer, 1000);
+    })();
+    </script>
+    {% endif %}
+</body>
+</html>

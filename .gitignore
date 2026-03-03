@@ -1,0 +1,12 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+datos_importar/*.csv
+frontend/node_modules/
+*.log
+.DS_Store

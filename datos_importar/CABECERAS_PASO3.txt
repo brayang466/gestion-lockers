@@ -1,0 +1,22 @@
+PASO 3: Compartir cabeceras de tus 10 hojas
+Pega la primera fila (nombres de columnas) de cada hoja para adaptar el importador.
+
+--- REGISTRO DE PERSONAL ---
+
+--- REGISTRO DE ASIGNACIONES ---
+
+--- DOTACIONES DISPONIBLES ---
+
+--- PERSONAL PRESUPUESTADO ---
+
+--- LOCKER DISPONIBLES ---
+
+--- HISTORIAL DE RETIROS ---
+
+--- INGRESO DE LOCKERS ---
+
+--- INGRESO DE DOTACION ---
+
+--- BASE DE LOCKERS ---
+
+--- BASE DE DOTACIONES ---
