@@ -21,6 +21,10 @@ La aplicación usa **Flask + Jinja2 + MySQL**: login, dashboard con estadística
 - INGRESO DE LOCKERS e INGRESO DE DOTACION no se importan; son para registro manual (ver docs/FORMULARIOS_INGRESO.md).
 - `python scripts/importar_todo.py` o por tabla: `python scripts/import_datos.py archivo.csv -t base_lockers --replace`
 
+## Base de datos en otro equipo
+
+Para llevar la base de datos (estructura + datos) a otro PC: **exportar** con `python scripts/exportar_bd.py` (genera `database/gestor_lockers_dump.sql`), copiar ese archivo al otro equipo y **restaurar** con `python scripts/restaurar_bd.py`. Ver **docs/BASE_DATOS_OTRO_EQUIPO.md**.
+
 ## Siguiente: Login, dashboard, módulos
 
 Ver **docs/SIGUIENTE_LOGIN_DASHBOARD.md** para login, dashboard y menú de módulos.
