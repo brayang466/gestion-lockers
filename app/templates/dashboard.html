@@ -1,61 +1,223 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Gestor de Lockers{% endblock %}
+{% from 'includes/module_icons.html' import module_icon %}
+{% block title %}Dashboard - LockerBeef{% endblock %}
 {% block content %}
-<div class="dashboard-layout">
-    <aside class="dashboard-sidebar" aria-label="Módulos">
-        <h2>Módulos</h2>
-        <ul class="modulos modulos-vertical">
-            {% for mid, cfg in modulos_config.items() %}
-            <li>
-                <a href="{{ url_for('main.modulo', modulo_id=mid) }}" class="modulo-link">
-                    <span class="modulo-icon" aria-hidden="true">
-                        {% set icons = ['📦', '🔓', '📋', '✅', '👤', '📊', '🔗', '📤', '➕', '📥'] %}
-                        {{ icons[loop.index0 % 10] }}
-                    </span>
-                    <span class="modulo-text">
-                        <span class="modulo-titulo">{{ cfg.titulo }}</span>
-                    </span>
-                    <span class="modulo-arrow" aria-hidden="true">→</span>
-                </a>
-            </li>
-            {% endfor %}
-        </ul>
+{# Paleta Enterprise (Stripe/Linear): fondos neutros, acento verde, bordes sutiles #}
+<style>
+.ent {
+    --ent-bg: #fafafa;
+    --ent-surface: #ffffff;
+    --ent-border: #e5e7eb;
+    --ent-text: #111827;
+    --ent-text-muted: #6b7280;
+    --ent-accent: #059669;
+    --ent-accent-hover: #047857;
+    --ent-hover: #f9fafb;
+    --ent-skeleton: #e5e7eb;
+    --ent-radius: 8px;
+    --ent-radius-lg: 12px;
+    --ent-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    --ent-shadow-hover: 0 4px 12px rgba(0,0,0,0.08);
+}
+.ent .dashboard-layout { background: var(--ent-bg); }
+.ent .dashboard-sidebar { background: var(--ent-surface); border-right: 1px solid var(--ent-border); }
+.ent .dashboard-center { padding: 1.5rem 2rem; }
+/* Rejilla 12 columnas */
+.ent .grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; align-items: start; }
+.ent .col-12 { grid-column: span 12; }
+.ent .col-6 { grid-column: span 6; }
+.ent .col-4 { grid-column: span 4; }
+.ent .col-3 { grid-column: span 3; }
+.ent .col-8 { grid-column: span 8; }
+@media (max-width: 900px) {
+    .ent .col-4, .ent .col-3 { grid-column: span 6; }
+    .ent .col-6, .ent .col-8 { grid-column: span 12; }
+}
+@media (max-width: 600px) {
+    .ent .col-4, .ent .col-3, .ent .col-6 { grid-column: span 12; }
+}
+/* Barra superior: búsqueda + filtros */
+.ent .dashboard-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.ent .dashboard-toolbar h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--ent-text); letter-spacing: -0.02em; }
+/* Widgets estadísticas */
+.ent .stat-card {
+    background: var(--ent-surface);
+    border: 1px solid var(--ent-border);
+    border-radius: var(--ent-radius-lg);
+    padding: 1.25rem;
+    box-shadow: var(--ent-shadow);
+    transition: box-shadow 0.2s, transform 0.05s ease;
+}
+.ent .stat-card:hover { box-shadow: var(--ent-shadow-hover); }
+.ent .stat-card .stat-value { font-size: 1.75rem; font-weight: 700; color: var(--ent-accent); letter-spacing: -0.02em; line-height: 1.2; }
+.ent .stat-card .stat-label { font-size: 0.8125rem; color: var(--ent-text-muted); margin-top: 0.25rem; font-weight: 500; }
+/* Skeleton de carga */
+.ent .skeleton { background: linear-gradient(90deg, var(--ent-skeleton) 25%, #f3f4f6 50%, var(--ent-skeleton) 75%); background-size: 200% 100%; animation: ent-skeleton 1.2s ease-in-out infinite; border-radius: 4px; }
+@keyframes ent-skeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.ent .stat-card.skeleton-loading .stat-value { height: 1.75rem; }
+.ent .stat-card.skeleton-loading .stat-label { height: 0.875rem; width: 60%; margin-top: 0.5rem; }
+/* Gráfico */
+.ent .widget-chart {
+    background: var(--ent-surface);
+    border: 1px solid var(--ent-border);
+    border-radius: var(--ent-radius-lg);
+    padding: 1.25rem;
+    box-shadow: var(--ent-shadow);
+}
+.ent .widget-chart h3 { margin: 0 0 1rem; font-size: 0.8125rem; font-weight: 600; color: var(--ent-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.ent .widget-chart .chart-container { height: 220px; position: relative; }
+/* Panel derecho sesión */
+.ent .dashboard-right {
+    background: var(--ent-surface);
+    border-left: 1px solid var(--ent-border);
+    padding: 1.25rem;
+}
+.ent .panel-title { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ent-text-muted); margin: 0 0 1rem; }
+.ent .panel-user { font-weight: 600; color: var(--ent-text); margin-bottom: 0.25rem; }
+.ent .panel-role { font-size: 0.8125rem; color: var(--ent-text-muted); margin-bottom: 1rem; }
+.ent .modulo-icon-svg { display: flex; align-items: center; justify-content: center; }
+.ent .modulo-icon-svg svg { width: 22px; height: 22px; flex-shrink: 0; }
+</style>
+
+<div class="dashboard-layout ent" id="dashboardEnt">
+    <aside class="dashboard-sidebar" aria-label="Navegación">
+        <div class="sidebar-brand">LockerBeef</div>
+        <nav class="sidebar-section">
+            <div class="sidebar-section-title">Principal</div>
+            <ul class="modulos modulos-vertical">
+                <li>
+                    <a href="{{ url_for('main.dashboard') }}" class="modulo-link active">
+                        {{ module_icon('chart') }}
+                        <span class="modulo-text"><span class="modulo-titulo">Dashboard</span></span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        <nav class="sidebar-section">
+            <div class="sidebar-section-title">Módulos</div>
+            <ul class="modulos modulos-vertical">
+                {% for mid, cfg in modulos_config.items() %}
+                <li>
+                    <a href="{{ url_for('main.modulo', modulo_id=mid) }}" class="modulo-link">
+                        {{ module_icon(cfg.icon|default('folder')) }}
+                        <span class="modulo-text"><span class="modulo-titulo">{{ cfg.titulo }}</span></span>
+                    </a>
+                </li>
+                {% endfor %}
+                {% if show_usuarios_module|default(false) %}
+                <li>
+                    <a href="{{ url_for('main.usuarios') }}" class="modulo-link modulo-link-admin">
+                        {{ module_icon('users-cog') }}
+                        <span class="modulo-text"><span class="modulo-titulo">Gestión de usuarios</span></span>
+                    </a>
+                </li>
+                {% endif %}
+            </ul>
+        </nav>
     </aside>
-    <div class="dashboard-main">
-        <header class="dashboard-header">
-            <h1>Dashboard</h1>
-            <p class="hint">Resumen del sistema y estadísticas</p>
-        </header>
-        <section class="cards" aria-label="Estadísticas">
-            <div class="card">
-                <div class="card-value">{{ total_lockers }}</div>
-                <div class="card-label">Total lockers</div>
+
+    <div class="dashboard-center">
+        {# Fila 1: Título #}
+        <div class="dashboard-toolbar">
+            <h1>Panel de control</h1>
+        </div>
+
+        {# Fila 2: Widgets de estadísticas (rejilla 12 columnas) #}
+        <section class="grid-12" aria-label="Estadísticas">
+            <div class="col-3 stat-card">
+                <div class="stat-value">{{ total_lockers }}</div>
+                <div class="stat-label">Total lockers</div>
             </div>
-            <div class="card">
-                <div class="card-value">{{ disponibles }}</div>
-                <div class="card-label">Disponibles</div>
+            <div class="col-3 stat-card">
+                <div class="stat-value">{{ disponibles }}</div>
+                <div class="stat-label">Disponibles</div>
             </div>
-            <div class="card">
-                <div class="card-value">{{ total_dotaciones }}</div>
-                <div class="card-label">Dotaciones</div>
+            <div class="col-3 stat-card">
+                <div class="stat-value">{{ total_dotaciones }}</div>
+                <div class="stat-label">Dotaciones</div>
             </div>
-            <div class="card">
-                <div class="card-value">{{ dotaciones_disponibles }}</div>
-                <div class="card-label">En stock</div>
+            <div class="col-3 stat-card">
+                <div class="stat-value">{{ dotaciones_disponibles }}</div>
+                <div class="stat-label">En stock</div>
             </div>
-            <div class="card">
-                <div class="card-value">{{ total_personal }}</div>
-                <div class="card-label">Personal</div>
+            <div class="col-3 stat-card">
+                <div class="stat-value">{{ total_personal }}</div>
+                <div class="stat-label">Personal</div>
             </div>
-            <div class="card">
-                <div class="card-value">{{ total_asignaciones }}</div>
-                <div class="card-label">Asignaciones</div>
+            <div class="col-3 stat-card">
+                <div class="stat-value">{{ total_asignaciones }}</div>
+                <div class="stat-label">Asignaciones</div>
             </div>
-            <div class="card">
-                <div class="card-value">{{ total_retiros }}</div>
-                <div class="card-label">Retiros</div>
+            <div class="col-3 stat-card">
+                <div class="stat-value">{{ total_retiros }}</div>
+                <div class="stat-label">Retiros</div>
             </div>
+        </section>
+
+        {# Fila 3: Gráfico + Panel sesión #}
+        <section class="grid-12" style="margin-top: 1.5rem;">
+            <div class="col-8 widget-chart">
+                <h3>Asignaciones — últimos 7 días</h3>
+                <div class="chart-container">
+                    <canvas id="chartAsignaciones" width="400" height="220" aria-label="Gráfico de asignaciones"></canvas>
+                </div>
+            </div>
+            <aside class="col-4 dashboard-right" aria-label="Sesión">
+                <div class="panel-title">Sesión</div>
+                <p class="panel-user">{{ session.get('user_nombre', '') }}</p>
+                <p class="panel-role">
+                    {% if session.get('user_rol') == 'admin' %}Administrador{% elif session.get('user_rol') == 'coordinador' %}Coordinador{% else %}Usuario{% endif %}
+                </p>
+                <dl class="panel-detail" style="font-size: 0.8rem; color: var(--ent-text); line-height: 1.6;">
+                    <dt style="color: var(--ent-text-muted); font-weight: 500; margin-top: 0.5rem;">Tiempo</dt>
+                    <dd style="margin: 0.15rem 0 0;"><span id="sessionTimerSidebar">00:00:00</span></dd>
+                    <dt style="color: var(--ent-text-muted); font-weight: 500; margin-top: 0.5rem;">Área actual</dt>
+                    <dd style="margin: 0.15rem 0 0;">{{ current_area or '—' }}</dd>
+                </dl>
+            </aside>
         </section>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous" defer></script>
+<script>
+(function() {
+    var ctx = document.getElementById('chartAsignaciones');
+    if (ctx) {
+        var labels = {{ chart_labels|tojson }};
+        var data = {{ chart_data|tojson }};
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{ label: 'Asignaciones', data: data, borderColor: '#059669', backgroundColor: 'rgba(5, 150, 105, 0.08)', fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#059669', pointBorderColor: '#fff', pointBorderWidth: 2 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 11 }, color: '#6b7280' } }, x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#6b7280', maxRotation: 0 } } }
+            }
+        });
+    }
+    var key = 'gestor_session_start';
+    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, Date.now().toString());
+    var start = parseInt(sessionStorage.getItem(key), 10);
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function updateSidebarTimer() {
+        var elapsed = Math.floor((Date.now() - start) / 1000);
+        var h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
+        var el = document.getElementById('sessionTimerSidebar');
+        if (el) el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+    }
+    updateSidebarTimer();
+    setInterval(updateSidebarTimer, 1000);
+})();
+</script>
 {% endblock %}

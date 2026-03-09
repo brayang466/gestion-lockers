@@ -1,3 +1,4 @@
+from datetime import datetime
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from app.config import Config
@@ -11,6 +12,11 @@ def create_app(config_class=Config):
     db.init_app(app)
     from app.routes import main
     app.register_blueprint(main.bp)
+
+    @app.context_processor
+    def inject_current_year():
+        return {"current_year": datetime.utcnow().year}
+
     with app.app_context():
         db.create_all()
     return app

@@ -1,4 +1,4 @@
-# Dashboard React (Gestor de Lockers)
+# Dashboard React (LockerBeef)
 
 Esta carpeta es el **frontend del dashboard** (React + Vite + Tailwind). Hay que instalar dependencias y generar el build para que Flask lo sirva.
 

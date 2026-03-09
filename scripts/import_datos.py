@@ -165,7 +165,6 @@ def import_locker_disponibles(r, rep, app):
 # HISTORIAL DE RETIROS: ID RETIRO, identificacion, Codigo de Dotacion, Fecha de Retiro, Operario, Codigo de Lockets, Area, Talla de Operarios, Talla de dotacion asignada, Area de Lockers, Observaciones
 def import_historial_retiros(r, rep, app):
     c = [
-        (("id retiro",), "id_retiro"),
         (("identificacion",), "identificacion"),
         (("codigo de dotacion",), "codigo_dotacion"),
         (("fecha de retiro", "fecha retiro"), "fecha_retiro", "date"),
@@ -175,7 +174,6 @@ def import_historial_retiros(r, rep, app):
         (("talla de operarios",), "talla_operarios"),
         (("talla de dotacion asignada",), "talla_dotacion"),
         (("area de lockers",), "area_lockers"),
-        (("observaciones",), "observaciones"),
     ]
     return _import(r, rep, app, HistorialRetiros, c, "historial_retiros")
 

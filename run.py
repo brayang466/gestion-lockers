@@ -1,3 +1,8 @@
+# Cargar .env lo más pronto posible (también para el recargador de Flask)
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True, encoding="utf-8")
+
 from app import create_app
 app = create_app()
 if __name__ == "__main__":

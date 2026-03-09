@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Seleccionar área — LockerBeef{% endblock %}
+{% block content %}
+<style>
+.areas-page {
+    min-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    background: linear-gradient(160deg, #f0fdf4 0%, #f8fafc 40%, #ecfdf5 100%);
+}
+.areas-page h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--gris-texto);
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+.areas-page .sub {
+    font-size: 1rem;
+    color: var(--gris-muted);
+    margin-bottom: 2rem;
+    text-align: center;
+    max-width: 480px;
+}
+.areas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1.25rem;
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+}
+.area-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1.5rem;
+    background: var(--blanco);
+    border-radius: var(--radio-lg);
+    box-shadow: var(--sombra);
+    text-decoration: none;
+    color: var(--gris-texto);
+    font-weight: 600;
+    font-size: 1.1rem;
+    border: 3px solid transparent;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.area-card:hover {
+    border-color: var(--verde);
+    box-shadow: var(--sombra-hover);
+    transform: translateY(-3px);
+}
+.area-card:active { transform: translateY(-1px); }
+.area-card-icon {
+    width: 56px;
+    height: 56px;
+    margin-bottom: 1rem;
+    background: var(--verde-claro);
+    color: var(--verde);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.area-card-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke: currentColor;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+    transition: transform 0.25s ease;
+}
+.area-card:hover .area-card-icon {
+    background: var(--verde);
+    color: var(--blanco);
+}
+.area-card:hover .area-card-icon svg {
+    transform: scale(1.08);
+}
+@keyframes area-icon-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+.area-card .area-card-icon svg {
+    animation: area-icon-float 3s ease-in-out infinite;
+}
+.area-card:hover .area-card-icon svg {
+    animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .area-card .area-card-icon svg { animation: none; }
+}
+.area-card-name { text-align: center; letter-spacing: 0.02em; }
+.areas-sin-area {
+    text-align: center;
+    padding: 2rem;
+    background: var(--rojo-claro);
+    border: 2px solid rgba(196, 30, 58, 0.2);
+    border-radius: var(--radio-lg);
+    max-width: 420px;
+    margin: 0 auto;
+}
+.areas-sin-area h2 {
+    font-size: 1.25rem;
+    color: var(--rojo-oscuro);
+    margin-bottom: 0.75rem;
+}
+.areas-sin-area p {
+    color: var(--gris-texto);
+    font-size: 0.95rem;
+    margin: 0;
+}
+@media (max-width: 600px) {
+    .areas-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .area-card { padding: 1.5rem 1rem; font-size: 1rem; }
+}
+</style>
+
+<div class="areas-page">
+    <h1>Áreas de trabajo</h1>
+    <p class="sub">Selecciona el área con la que vas a trabajar. El dashboard y los módulos mostrarán la información de esa área.</p>
+
+    {% if sin_area %}
+        <div class="areas-sin-area" role="alert">
+            <h2>Sin área asignada</h2>
+            <p>No tienes un área de trabajo asignada. Contacta al administrador para que te asigne un área y puedas acceder al sistema.</p>
+        </div>
+    {% else %}
+        <div class="areas-grid">
+            {% for area in areas_para_elegir %}
+            <a href="{{ url_for('main.entrar_area', nombre=area.nombre) }}" class="area-card">
+                <span class="area-card-icon" aria-hidden="true">
+                    {% if area.nombre == 'BENEFICIO' %}
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 2v14l-3 6h2l2-4 2 4h2l-3-6V2z"/><path d="M10 16h4"/></svg>
+                    {% elif area.nombre == 'CALIDAD' %}
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></svg>
+                    {% elif area.nombre == 'DESPOSTE' %}
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><ellipse cx="12" cy="12" rx="7" ry="5"/><path d="M5 12c0 1.5 1.5 3 3 3 1 0 2-.5 2.5-1.2"/><path d="M19 12c0 1.5-1.5 3-3 3-1 0-2-.5-2.5-1.2"/><path d="M9 10h1M14 10h1M10 14h4"/></svg>
+                    {% elif area.nombre == 'LOGISTICA' %}
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M1 6h14v9H1z"/><path d="M15 9h4l3 3v3h-7V9z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                    {% elif area.nombre == 'LYD' %}
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 3v18"/><path d="M6 21h12"/><path d="M5 21l3-6 4-2 4 2 3 6"/><path d="M12 9v4"/></svg>
+                    {% elif area.nombre == 'PCC' %}
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M12 6c-2.2 0-4 1.8-4 4 0 1.2.5 2.2 1.3 2.9-.8.7-1.3 1.7-1.3 2.9 0 2.2 1.8 4 4 4s4-1.8 4-4c0-1.2-.5-2.2-1.3-2.9.8-.7 1.3-1.7 1.3-2.9 0-2.2-1.8-4-4-4z"/></svg>
+                    {% else %}
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+                    {% endif %}
+                </span>
+                <span class="area-card-name">{{ area.nombre }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

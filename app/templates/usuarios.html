@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Gestión de usuarios - LockerBeef{% endblock %}
+{% block content %}
+<div class="usuarios-page">
+    <header class="usuarios-header">
+        <h1>Gestión de usuarios</h1>
+        <p class="hint">Usuarios registrados en el aplicativo. Puedes asignar o modificar el <strong>Área</strong> de cada usuario.</p>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-wrap">
+        {% for category, msg in messages %}
+        <div class="flash flash-{{ category }}" role="alert">{{ msg }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {% if item_edit %}
+    <div class="modulo-form-wrap usuarios-form-area">
+        <h2>Editar área — {{ item_edit.nombre or item_edit.email }}</h2>
+        <form method="post" action="{{ url_for('main.usuarios') }}" class="modulo-form">
+            <input type="hidden" name="edit_id" value="{{ item_edit.id }}">
+            <div class="form-group">
+                <label for="area">Área</label>
+                <select id="area" name="area" class="form-select">
+                    <option value="">— Sin asignar —</option>
+                    {% for a in areas %}
+                    <option value="{{ a.nombre }}" {% if edit_area == a.nombre %}selected{% endif %}>{{ a.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Guardar área</button>
+                <a href="{{ url_for('main.usuarios') }}" class="btn btn-cancel">Cancelar</a>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="modulo-actions">
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-back">← Dashboard</a>
+    </div>
+
+    <div class="modulo-table-wrap usuarios-table-wrap">
+        <table class="modulo-table usuarios-table">
+            <thead>
+                <tr>
+                    <th>Nombre</th>
+                    <th>Correo</th>
+                    <th>Teléfono</th>
+                    <th>Rol</th>
+                    <th>Área</th>
+                    <th>Estado</th>
+                    <th>Fecha de registro</th>
+                    <th class="th-actions">Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if not users %}
+                <tr>
+                    <td colspan="8" class="empty">No hay usuarios registrados.</td>
+                </tr>
+                {% else %}
+                {% for u in users %}
+                <tr>
+                    <td class="cell-nombre">{{ u.nombre or '—' }}</td>
+                    <td class="cell-email">{{ u.email or '—' }}</td>
+                    <td class="cell-tel">{{ u.telefono or '—' }}</td>
+                    <td class="cell-rol">
+                        <span class="badge badge-{{ u.rol or 'usuario' }}">{{ (u.rol or 'usuario')|capitalize }}</span>
+                    </td>
+                    <td class="cell-area">{{ (u.area or '—')|upper }}</td>
+                    <td class="cell-activo">
+                        {% if u.activo %}
+                        <span class="estado disponible">Activo</span>
+                        {% else %}
+                        <span class="estado ocupado">Inactivo</span>
+                        {% endif %}
+                    </td>
+                    <td class="cell-fecha">{{ u.creado_en.strftime('%d/%m/%Y %H:%M') if u.creado_en else '—' }}</td>
+                    <td class="td-actions">
+                        <a href="{{ url_for('main.usuarios', edit_id=u.id) }}" class="btn-editar" title="Editar área">
+                            <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                            Editar área
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<style>
+    .usuarios-page { max-width: 1100px; }
+    .usuarios-header {
+        margin-bottom: 1.25rem;
+        padding: 1.25rem 1.5rem;
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border);
+        border-radius: var(--radio-lg);
+        box-shadow: var(--glass-shadow);
+        border-left: 4px solid var(--verde);
+    }
+    .usuarios-header h1 { margin: 0 0 0.35rem; font-size: 1.4rem; color: var(--verde-oscuro); }
+    .usuarios-header .hint { margin: 0; font-size: 0.9rem; color: var(--gris-muted); }
+    .usuarios-form-area { margin-bottom: 1.5rem; }
+    .form-select {
+        width: 100%;
+        padding: 0.55rem 0.75rem;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-family: inherit;
+        background: var(--blanco);
+        cursor: pointer;
+        transition: border-color 0.2s;
+    }
+    .form-select:focus {
+        outline: none;
+        border-color: var(--verde);
+    }
+    .usuarios-table-wrap { margin-top: 0.5rem; }
+    .usuarios-table .cell-nombre { font-weight: 600; color: var(--gris-texto); }
+    .usuarios-table .cell-email { color: var(--gris-muted); font-size: 0.9rem; }
+    .usuarios-table .cell-area { font-weight: 500; }
+    .badge {
+        display: inline-block;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .badge-admin { background: #dbeafe; color: #1e40af; }
+    .badge-coordinador { background: #fef3c7; color: #92400e; }
+    .badge-usuario { background: #f1f5f9; color: var(--gris-texto); }
+</style>
+{% endblock %}

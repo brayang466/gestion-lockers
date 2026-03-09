@@ -1,4 +1,4 @@
-# Gestor de Lockers
+# LockerBeef
 
 Flask + MySQL (XAMPP / MySQL Workbench). Tablas alineadas con tus hojas (REGISTRO DE PERSONAL, ASIGNACIONES, BASE DE LOCKERS, etc.) + usuarios (admin).
 
@@ -6,7 +6,7 @@ Flask + MySQL (XAMPP / MySQL Workbench). Tablas alineadas con tus hojas (REGISTR
 
 1. `.venv\Scripts\activate` y `pip install -r requirements.txt`
 2. MySQL encendido. En Workbench: **database/crear_bd.sql**. Si ya tenías la BD, ejecuta además **database/migrar_cabeceras.sql** para añadir columnas de tus cabeceras.
-3. Copiar `.env.example` a `.env` y configurar MYSQL_*
+3. Configurar el archivo `.env` en la raíz del proyecto (MYSQL_* y, si quieres recuperación de contraseña por correo, MAIL_*). Ver **docs/RECUPERACION_CONTRASENA.md** para el correo.
 4. Crear admin: `python scripts/crear_admin.py`
 
 ## Ejecutar

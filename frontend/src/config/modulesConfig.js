@@ -174,14 +174,11 @@ export const MODULES = [
     icon: '📤',
     apiPath: '/api/historial-retiros',
     columns: [
-      { key: 'id_retiro', label: 'ID Retiro' },
       { key: 'operario', label: 'Operario' },
       { key: 'codigo_dotacion', label: 'Cód. Dotación' },
       { key: 'fecha_retiro', label: 'Fecha retiro' },
-      { key: 'motivo', label: 'Motivo' },
     ],
     formFields: [
-      { name: 'id_retiro', label: 'ID Retiro', type: 'text' },
       { name: 'identificacion', label: 'Identificación', type: 'text' },
       { name: 'codigo_dotacion', label: 'Código dotación', type: 'text' },
       { name: 'fecha_retiro', label: 'Fecha retiro', type: 'date' },
@@ -191,8 +188,6 @@ export const MODULES = [
       { name: 'talla_operarios', label: 'Talla operarios', type: 'text' },
       { name: 'talla_dotacion', label: 'Talla dotación', type: 'text' },
       { name: 'area_lockers', label: 'Área lockers', type: 'text' },
-      { name: 'motivo', label: 'Motivo', type: 'text' },
-      { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
     ],
   },
   {
