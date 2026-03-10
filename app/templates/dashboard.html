@@ -206,18 +206,6 @@
             }
         });
     }
-    var key = 'gestor_session_start';
-    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, Date.now().toString());
-    var start = parseInt(sessionStorage.getItem(key), 10);
-    function pad(n) { return (n < 10 ? '0' : '') + n; }
-    function updateSidebarTimer() {
-        var elapsed = Math.floor((Date.now() - start) / 1000);
-        var h = Math.floor(elapsed / 3600), m = Math.floor((elapsed % 3600) / 60), s = elapsed % 60;
-        var el = document.getElementById('sessionTimerSidebar');
-        if (el) el.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
-    }
-    updateSidebarTimer();
-    setInterval(updateSidebarTimer, 1000);
 })();
 </script>
 {% endblock %}

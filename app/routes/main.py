@@ -284,9 +284,12 @@ def login():
         if not email or not password:
             flash("Ingresa email y contraseña.", "error")
             return render_template("login.html", email_value=email, recordarme_checked=recordarme)
-        user = Usuario.query.filter_by(email=email, activo=True).first()
+        user = Usuario.query.filter_by(email=email).first()
         if not user or not user.password_hash:
             flash("Email o contraseña incorrectos.", "error")
+            return render_template("login.html", email_value=email, recordarme_checked=recordarme)
+        if not getattr(user, "activo", True):
+            flash("Tu cuenta está inactiva. Contacta al administrador para reactivarla.", "error")
             return render_template("login.html", email_value=email, recordarme_checked=recordarme)
         if not check_password_hash(user.password_hash, password):
             flash("Email o contraseña incorrectos.", "error")
@@ -649,9 +652,20 @@ def _admin_required(f):
 @login_required
 @_admin_required
 def usuarios():
-    """Módulo solo admin: listar usuarios y editar Área (desde area_trabajo)."""
+    """Módulo solo admin: listar usuarios, editar Área e inactivar/activar."""
     areas = AreaTrabajo.query.order_by(AreaTrabajo.nombre).all()
     if request.method == "POST":
+        toggle_id = request.form.get("toggle_activo_id", type=int)
+        if toggle_id:
+            user = Usuario.query.get(toggle_id)
+            if user:
+                nuevo_activo = not user.activo
+                # Actualizar solo la columna activo para no tocar password_hash ni otros campos
+                Usuario.query.filter_by(id=toggle_id).update({"activo": nuevo_activo}, synchronize_session=False)
+                db.session.commit()
+                estado = "activado" if nuevo_activo else "inactivado"
+                flash(f"Usuario {estado} correctamente.", "success")
+            return redirect(url_for("main.usuarios"))
         edit_id = request.form.get("edit_id", type=int)
         area_val = (request.form.get("area") or "").strip()
         if edit_id:

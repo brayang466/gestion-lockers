@@ -15,7 +15,6 @@
 <form method="get" action="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="modulo-search-wrap" id="modulo-search-form">
   <label for="modulo-search" class="modulo-search-label">Buscar</label>
   <input type="search" id="modulo-search" name="q" value="{{ search_q|default('', true)|e }}" placeholder="Buscar en este módulo…" class="modulo-search-input" aria-label="Buscar en el listado" autocomplete="off">
-  <button type="submit" class="btn btn-primary modulo-search-btn">Buscar</button>
   {% if search_q %}
   <a href="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="btn btn-cancel modulo-search-clear">Limpiar</a>
   {% endif %}

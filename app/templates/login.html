@@ -217,6 +217,8 @@
         }
         @media (prefers-reduced-motion: reduce) {
             .login-particle { animation: none; opacity: 0.25; }
+            .login-deco-brand .login-deco-icon,
+            .login-deco-form { animation: none !important; -webkit-animation: none !important; }
         }
 
         /* Capa 3: Patrón sutil (sin animación para estabilidad) */
@@ -258,7 +260,7 @@
             animation: login-entrance 0.45s ease-out forwards;
             -webkit-animation: login-entrance 0.45s ease-out forwards;
         }
-        /* Logo: caja y imagen con tamaño fijo para que no se deforme en carga ni al volver */
+        /* Logo: caja y imagen con tamaño fijo */
         .login-logo {
             flex: 0 0 auto;
             width: 200px;
@@ -310,9 +312,89 @@
             font-weight: 500;
             text-shadow: 0 1px 2px rgba(0,0,0,0.25);
         }
+        /* Animaciones decorativas: movimiento suave, no forzado, optimizado (solo transform/opacity) */
+        @keyframes login-deco-float {
+            0%, 100% { transform: translateY(0) translateZ(0); }
+            50% { transform: translateY(-6px) translateZ(0); }
+        }
+        @-webkit-keyframes login-deco-float {
+            0%, 100% { transform: translateY(0) translateZ(0); }
+            50% { transform: translateY(-6px) translateZ(0); }
+        }
+        @keyframes login-deco-form-drift {
+            0%, 100% { transform: translate(0, 0) translateZ(0); opacity: 0.14; }
+            50% { transform: translate(3px, -4px) translateZ(0); opacity: 0.16; }
+        }
+        @-webkit-keyframes login-deco-form-drift {
+            0%, 100% { transform: translate(0, 0) translateZ(0); opacity: 0.14; }
+            50% { transform: translate(3px, -4px) translateZ(0); opacity: 0.16; }
+        }
+        /* Objetos decorativos zona logo */
+        .login-deco-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+        .login-deco-brand .login-deco-icon {
+            display: inline-block;
+            width: 36px;
+            height: 36px;
+            opacity: 0;
+            color: rgba(255,255,255,0.95);
+            transform: translateY(0) translateZ(0);
+            will-change: transform;
+            transition: opacity 0.4s ease-out;
+        }
+        body.login-anim-ready .login-deco-brand .login-deco-icon {
+            opacity: 0.9;
+        }
+        body.login-anim-css .login-deco-brand .login-deco-icon {
+            animation: login-deco-float 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+            -webkit-animation: login-deco-float 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+        }
+        .login-deco-brand .login-deco-icon:nth-child(1) { transition-delay: 0.1s; }
+        .login-deco-brand .login-deco-icon:nth-child(2) { transition-delay: 0.2s; }
+        .login-deco-brand .login-deco-icon:nth-child(3) { transition-delay: 0.3s; }
+        body.login-anim-css .login-deco-brand .login-deco-icon:nth-child(2) { animation-delay: -0.8s; }
+        body.login-anim-css .login-deco-brand .login-deco-icon:nth-child(3) { animation-delay: -1.6s; }
+        .login-deco-brand .login-deco-icon svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
 
-        /* Panel derecho: formulario (altura fija, scroll interno si hace falta) */
+        /* Objetos decorativos zona formulario (esquinas) */
+        .login-deco-form {
+            position: absolute;
+            pointer-events: none;
+            z-index: 0;
+            opacity: 0;
+            color: var(--login-accent);
+            transform: translate(0, 0) translateZ(0);
+            will-change: transform, opacity;
+            transition: opacity 0.5s ease-out;
+        }
+        body.login-anim-ready .login-deco-form { opacity: 0.14; }
+        body.login-anim-css .login-deco-form {
+            animation: login-deco-form-drift 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+            -webkit-animation: login-deco-form-drift 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+        }
+        body.login-anim-css .login-deco-form--br { animation-delay: -2.5s; }
+        .login-deco-form--tl { top: 1rem; left: 1rem; }
+        .login-deco-form--br { bottom: 1rem; right: 1rem; }
+        .login-deco-form svg {
+            width: 64px;
+            height: 64px;
+            display: block;
+        }
+        .login-card { position: relative; z-index: 1; }
+
+        /* Panel derecho: formulario */
         .login-form-panel {
+            position: relative;
             width: 100%;
             max-width: 480px;
             min-height: 0;
@@ -639,7 +721,7 @@
         }
         .login-footer a:hover { text-decoration: underline; }
 
-        /* Responsive: móvil — sin animaciones pesadas, transiciones cortas, scroll fluido */
+        /* Responsive: móvil — sin animaciones pesadas, scroll fluido */
         @media (max-width: 900px) {
             .login-split { flex-direction: column; }
             .login-brand {
@@ -686,11 +768,14 @@
             }
             .login-card h2 { font-size: 1.25rem; }
             .login-card .sub { font-size: 0.8125rem; margin-bottom: 1rem; }
+            .login-deco-brand { opacity: 0.7; }
+            .login-deco-form { display: none; }
         }
         @media (max-width: 480px) {
             .login-form-panel { padding: 1rem 1rem; padding-bottom: calc(1rem + 32px); }
             .login-logo { width: 100px; height: 70px; min-width: 100px; max-width: 100px; min-height: 70px; max-height: 70px; }
             .login-logo img { max-width: 100px; max-height: 70px; }
+            .login-deco-brand .login-deco-icon { width: 28px; height: 28px; }
         }
     </style>
 </head>
@@ -698,6 +783,7 @@
     <div class="login-split">
         <!-- Panel izquierdo: formulario (fondo blanco) -->
         <div class="login-form-panel">
+            <div class="login-deco-form login-deco-form--br" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
             <div class="login-card">
                 <div id="loginFlashContainer">
                     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -856,6 +942,11 @@
                 </div>
                 <h1>LockerBeef</h1>
                 <p class="tagline">Control de lockers, dotaciones y personal en un solo lugar.</p>
+                <div class="login-deco-brand" aria-hidden="true">
+                    <span class="login-deco-icon" title="Lockers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1.5" fill="currentColor"/></svg></span>
+                    <span class="login-deco-icon" title="Dotaciones"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg></span>
+                    <span class="login-deco-icon" title="Personal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg></span>
+                </div>
                 </div>
         </div>
     </div>
@@ -1072,6 +1163,50 @@
                 formRegistro.classList.add('was-validated');
                 }, false);
             }
+
+        // Dinamismo animaciones login: activar tras primer frame y loop fluido con requestAnimationFrame
+        (function animInit() {
+            var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            function ready() {
+                document.body.classList.add('login-anim-ready');
+                if (reducedMotion) {
+                    document.body.classList.add('login-anim-css');
+                    return;
+                }
+                var icons = document.querySelectorAll('.login-deco-brand .login-deco-icon');
+                var forms = document.querySelectorAll('.login-deco-form');
+                if (!icons.length && !forms.length) {
+                    document.body.classList.add('login-anim-css');
+                    return;
+                }
+                var start = performance.now();
+                function tick(now) {
+                    var t = (now - start) * 0.001;
+                    var i, phase, y;
+                    for (i = 0; i < icons.length; i++) {
+                        phase = i * 0.6;
+                        y = Math.sin(t * 0.5 + phase) * 5;
+                        icons[i].style.transform = 'translateY(' + y + 'px) translateZ(0)';
+                    }
+                    var fx, fy, op;
+                    for (i = 0; i < forms.length; i++) {
+                        phase = i * 0.9;
+                        fx = Math.sin(t * 0.35 + phase) * 3;
+                        fy = Math.cos(t * 0.3 + phase * 0.7) * -4;
+                        op = 0.13 + 0.03 * Math.sin(t * 0.25 + phase);
+                        forms[i].style.transform = 'translate(' + fx + 'px, ' + fy + 'px) translateZ(0)';
+                        forms[i].style.opacity = String(op);
+                    }
+                    requestAnimationFrame(tick);
+                }
+                requestAnimationFrame(tick);
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() { requestAnimationFrame(ready); });
+            } else {
+                requestAnimationFrame(ready);
+            }
+        })();
         })();
     </script>
 </body>

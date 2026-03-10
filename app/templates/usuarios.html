@@ -4,7 +4,7 @@
 <div class="usuarios-page">
     <header class="usuarios-header">
         <h1>Gestión de usuarios</h1>
-        <p class="hint">Usuarios registrados en el aplicativo. Puedes asignar o modificar el <strong>Área</strong> de cada usuario.</p>
+        <p class="hint">Usuarios registrados en el aplicativo. Puedes asignar o modificar el <strong>Área</strong> e <strong>inactivar o activar</strong> a cada usuario. Un usuario inactivo no podrá ingresar al aplicativo.</p>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -49,7 +49,6 @@
                 <tr>
                     <th>Nombre</th>
                     <th>Correo</th>
-                    <th>Teléfono</th>
                     <th>Rol</th>
                     <th>Área</th>
                     <th>Estado</th>
@@ -60,14 +59,13 @@
             <tbody>
                 {% if not users %}
                 <tr>
-                    <td colspan="8" class="empty">No hay usuarios registrados.</td>
+                    <td colspan="7" class="empty">No hay usuarios registrados.</td>
                 </tr>
                 {% else %}
                 {% for u in users %}
                 <tr>
                     <td class="cell-nombre">{{ u.nombre or '—' }}</td>
                     <td class="cell-email">{{ u.email or '—' }}</td>
-                    <td class="cell-tel">{{ u.telefono or '—' }}</td>
                     <td class="cell-rol">
                         <span class="badge badge-{{ u.rol or 'usuario' }}">{{ (u.rol or 'usuario')|capitalize }}</span>
                     </td>
@@ -85,6 +83,18 @@
                             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                             Editar área
                         </a>
+                        <form method="post" action="{{ url_for('main.usuarios') }}" class="form-inline-btn" onsubmit="return confirm('{% if u.activo %}{% if u.id == session.get('user_id') %}¿Inactivar tu propia cuenta? No podrás ingresar hasta que otro administrador te reactive.{% else %}¿Inactivar a este usuario? No podrá ingresar hasta que lo reactives.{% endif %}{% else %}¿Activar a este usuario?{% endif %}');">
+                            <input type="hidden" name="toggle_activo_id" value="{{ u.id }}">
+                            <button type="submit" class="btn-toggle-activo {% if u.activo %}btn-inactivar{% else %}btn-activar{% endif %}" title="{{ 'Inactivar' if u.activo else 'Activar' }}">
+                                {% if u.activo %}
+                                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                                Inactivar
+                                {% else %}
+                                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                Activar
+                                {% endif %}
+                            </button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}
@@ -137,5 +147,25 @@
     .badge-admin { background: #dbeafe; color: #1e40af; }
     .badge-coordinador { background: #fef3c7; color: #92400e; }
     .badge-usuario { background: #f1f5f9; color: var(--gris-texto); }
+    .usuarios-table .td-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .form-inline-btn { display: inline; margin: 0; }
+    .btn-toggle-activo {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.65rem;
+        font-size: 0.85rem;
+        font-family: inherit;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        background: #fef3c7;
+        color: #92400e;
+        transition: background 0.2s, color 0.2s;
+    }
+    .btn-toggle-activo:hover { background: #fde68a; }
+    .btn-toggle-activo.btn-activar { background: #d1fae5; color: #047857; }
+    .btn-toggle-activo.btn-activar:hover { background: #a7f3d0; }
+    .btn-toggle-activo .icon { width: 1rem; height: 1rem; flex-shrink: 0; }
 </style>
 {% endblock %}
