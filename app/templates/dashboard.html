@@ -128,33 +128,33 @@
             <h1>Panel de control</h1>
         </div>
 
-        {# Fila 2: Widgets de estadísticas (rejilla 12 columnas) #}
-        <section class="grid-12" aria-label="Estadísticas">
-            <div class="col-3 stat-card">
+        {# Fila 2: Widgets de estadísticas (rejilla 12 columnas) — actualización en tiempo real #}
+        <section class="grid-12" aria-label="Estadísticas" id="dashboardStatsSection">
+            <div class="col-3 stat-card" data-stat="total_lockers">
                 <div class="stat-value">{{ total_lockers }}</div>
                 <div class="stat-label">Total lockers</div>
             </div>
-            <div class="col-3 stat-card">
+            <div class="col-3 stat-card" data-stat="disponibles">
                 <div class="stat-value">{{ disponibles }}</div>
-                <div class="stat-label">Disponibles</div>
+                <div class="stat-label">Lockers Disponibles</div>
             </div>
-            <div class="col-3 stat-card">
+            <div class="col-3 stat-card" data-stat="total_dotaciones">
                 <div class="stat-value">{{ total_dotaciones }}</div>
                 <div class="stat-label">Dotaciones</div>
             </div>
-            <div class="col-3 stat-card">
+            <div class="col-3 stat-card" data-stat="dotaciones_disponibles">
                 <div class="stat-value">{{ dotaciones_disponibles }}</div>
                 <div class="stat-label">En stock</div>
             </div>
-            <div class="col-3 stat-card">
+            <div class="col-3 stat-card" data-stat="total_personal">
                 <div class="stat-value">{{ total_personal }}</div>
                 <div class="stat-label">Personal</div>
             </div>
-            <div class="col-3 stat-card">
+            <div class="col-3 stat-card" data-stat="total_asignaciones">
                 <div class="stat-value">{{ total_asignaciones }}</div>
                 <div class="stat-label">Asignaciones</div>
             </div>
-            <div class="col-3 stat-card">
+            <div class="col-3 stat-card" data-stat="total_retiros">
                 <div class="stat-value">{{ total_retiros }}</div>
                 <div class="stat-label">Retiros</div>
             </div>
@@ -172,7 +172,7 @@
                 <div class="panel-title">Sesión</div>
                 <p class="panel-user">{{ session.get('user_nombre', '') }}</p>
                 <p class="panel-role">
-                    {% if session.get('user_rol') == 'admin' %}Administrador{% elif session.get('user_rol') == 'coordinador' %}Coordinador{% else %}Usuario{% endif %}
+                    {% if session.get('user_rol') == 'superadmin' %}Super Administrador{% elif session.get('user_rol') == 'admin' %}Administrador{% elif session.get('user_rol') == 'coordinador' %}Coordinador{% else %}Usuario{% endif %}
                 </p>
                 <dl class="panel-detail" style="font-size: 0.8rem; color: var(--ent-text); line-height: 1.6;">
                     <dt style="color: var(--ent-text-muted); font-weight: 500; margin-top: 0.5rem;">Tiempo</dt>
@@ -188,11 +188,15 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous" defer></script>
 <script>
 (function() {
+    var statsUrl = "{{ url_for('main.api_dashboard_stats') }}";
+    var POLL_INTERVAL_MS = 15000;
+
+    var chartInstance = null;
     var ctx = document.getElementById('chartAsignaciones');
     if (ctx) {
         var labels = {{ chart_labels|tojson }};
         var data = {{ chart_data|tojson }};
-        new Chart(ctx, {
+        chartInstance = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: labels,
@@ -203,6 +207,44 @@
                 maintainAspectRatio: false,
                 plugins: { legend: { display: false } },
                 scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 11 }, color: '#6b7280' } }, x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#6b7280', maxRotation: 0 } } }
+            }
+        });
+    }
+
+    function updateDashboardFromJson(stats) {
+        if (!stats) return;
+        var section = document.getElementById('dashboardStatsSection');
+        if (section) {
+            ['total_lockers', 'disponibles', 'total_dotaciones', 'dotaciones_disponibles', 'total_personal', 'total_asignaciones', 'total_retiros'].forEach(function(key) {
+                var card = section.querySelector('.stat-card[data-stat="' + key + '"]');
+                if (card) {
+                    var valEl = card.querySelector('.stat-value');
+                    if (valEl && stats[key] !== undefined) valEl.textContent = stats[key];
+                }
+            });
+        }
+        if (chartInstance && stats.chart_labels && stats.chart_data) {
+            chartInstance.data.labels = stats.chart_labels;
+            chartInstance.data.datasets[0].data = stats.chart_data;
+            chartInstance.update('none');
+        }
+    }
+
+    function fetchStats() {
+        fetch(statsUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(updateDashboardFromJson)
+            .catch(function() {});
+    }
+
+    if (statsUrl && document.visibilityState !== 'hidden') {
+        var pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                fetchStats();
+                pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
+            } else {
+                clearInterval(pollTimer);
             }
         });
     }

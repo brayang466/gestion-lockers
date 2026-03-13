@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }} - LockerBeef{% endblock %}
+{% block content %}
+<div class="registro-form-page">
+  <h1>{{ titulo }}</h1>
+  {% if modulo_id == 'ingreso-dotacion' %}
+  <p class="hint">Registre la dotación. Los datos se guardarán en <strong>Base de Dotaciones</strong>.</p>
+  {% elif modulo_id == 'registro-personal' %}
+  <p class="hint">Datos del trabajador. El registro se guardará en <strong>Registro de Asignaciones</strong> con estado <span class="badge-activo">Activo</span> (sin asignación de locker ni dotación hasta que se complete).</p>
+  {% elif modulo_id == 'ingreso-lockers' %}
+  <p class="hint">Registre el o los lockers. Los datos se guardarán en <strong>Base de Lockers</strong>.</p>
+  {% endif %}
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="flash-wrap">
+    {% for category, msg in messages %}
+    <div class="flash flash-{{ category }}" role="alert">{{ msg }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <div class="modulo-actions" style="margin-bottom: 1rem;">
+    <a href="{{ url_for('main.dashboard') }}" class="btn btn-back">← Dashboard</a>
+  </div>
+
+  {% if can_edit|default(true) %}
+  <div class="modulo-form-wrap">
+    <form method="post" action="{{ url_for('main.registro_form', modulo_id=modulo_id) }}" class="modulo-form" id="registro-form">
+      {% for f in form_fields %}
+      <div class="form-group">
+        <label for="f_{{ f.name }}">{{ f.label }}{% if f.get('required') %} *{% endif %}</label>
+        {% if f.type == 'textarea' %}
+        <textarea id="f_{{ f.name }}" name="{{ f.name }}" rows="3" class="form-input" {% if f.get('required') %}required{% endif %}></textarea>
+        {% elif f.type == 'select' and f.options is defined %}
+        <select id="f_{{ f.name }}" name="{{ f.name }}" class="form-input {% if f.name == 'estado' or f.name == 'area_lockers' %}estado-select{% endif %}" {% if f.get('required') %}required{% endif %}>
+          {% for opt in f.options %}
+          <option value="{{ opt }}">{% if opt == '' %}Seleccione…{% else %}{{ opt }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input type="{{ f.type }}" id="f_{{ f.name }}" name="{{ f.name }}"
+               {% if f.type == 'number' %}value="1"{% endif %}
+               {% if f.name == 'area' and default_area is defined %}value="{{ default_area or '' }}"{% endif %}
+               {% if modulo_id == 'registro-personal' and f.name == 'area' %}readonly{% endif %}
+               {% if f.get('required') %}required{% endif %}
+               class="form-input{% if modulo_id == 'registro-personal' and f.name == 'area' %} input-readonly{% endif %}">
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Registrar</button>
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-cancel">Cancelar</a>
+      </div>
+    </form>
+  </div>
+  {% else %}
+  <p class="hint">No tiene permiso para registrar.</p>
+  {% endif %}
+</div>
+<style>
+  .registro-form-page { max-width: 520px; }
+  .registro-form-page .hint { color: var(--gris-muted, #64748b); margin-bottom: 1rem; }
+  .badge-activo { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; background: #d1fae5; color: #047857; }
+  .registro-form-page .form-input { width: 100%; padding: 0.5rem 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; }
+  .registro-form-page .form-input.input-readonly { background: #f1f5f9; color: #475569; cursor: not-allowed; }
+  .registro-form-page .form-group { margin-bottom: 1rem; }
+  .registro-form-page .form-actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  /* Select estado: mismo diseño oval que en módulos */
+  .registro-form-page .estado-select {
+    max-width: 280px;
+    padding: 0.6rem 1.2rem;
+    border-radius: 9999px;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 2px solid var(--verde, #15803d);
+    background: linear-gradient(180deg, #fff 0%, #f0fdf4 100%);
+    color: var(--gris-texto, #1e293b);
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2315803d'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1.25rem;
+    padding-right: 2.5rem;
+    box-shadow: 0 2px 10px rgba(21, 128, 61, 0.15);
+    transition: box-shadow 0.2s;
+  }
+  .registro-form-page .estado-select:hover { box-shadow: 0 4px 16px rgba(21, 128, 61, 0.25); }
+  .registro-form-page .estado-select:focus { outline: none; box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.3); }
+</style>
+{% endblock %}

@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Blueprint, render_template, redirect, url_for, request, session, flash, current_app
@@ -14,6 +15,139 @@ from app.models import (
 )
 
 bp = Blueprint("main", __name__)
+
+
+def _normalize_estado_base_lockers(estado):
+    """En base_lockers, quita el prefijo 'LOCKERT' del campo estado y deja solo el estado real."""
+    if not estado or not isinstance(estado, str):
+        return (estado or "disponible").strip()
+    s = estado.strip()
+    s = re.sub(r"^LOCKERT\s*", "", s, flags=re.IGNORECASE).strip()
+    return s if s else "disponible"
+
+
+def _normalize_estado_base_dotaciones(estado):
+    """Normaliza estado de base_dotaciones: quita DOTACION, 'NO HAY ESE CODIGO' -> 'NO EXISTE'; devuelve ASIGNADA/DISPONIBLE/NO EXISTE."""
+    if not estado or not isinstance(estado, str):
+        return "DISPONIBLE"
+    s = estado.strip()
+    if re.search(r"no\s*hay\s*ese\s*codigo", s, re.IGNORECASE):
+        return "NO EXISTE"
+    s = re.sub(r"^DOTACION\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*DOTACION\s*$", "", s, flags=re.IGNORECASE).strip()
+    if not s:
+        return "DISPONIBLE"
+    u = s.upper()
+    if u in ("ASIGNADA", "DISPONIBLE", "NO EXISTE"):
+        return u
+    return s
+
+
+def _get_next_id_asignaciones():
+    """Devuelve el siguiente ID en formato ASG-000, ASG-001, ... para RegistroAsignaciones. Regla: al insertar aplicar este formato."""
+    rows = (
+        RegistroAsignaciones.query.with_entities(RegistroAsignaciones.id_asignaciones)
+        .filter(RegistroAsignaciones.id_asignaciones.isnot(None))
+        .filter(RegistroAsignaciones.id_asignaciones != "")
+        .all()
+    )
+    max_num = -1
+    for (val,) in rows:
+        if not val:
+            continue
+        m = re.match(r"^ASG-(\d+)$", (val or "").strip(), re.IGNORECASE)
+        if m:
+            try:
+                max_num = max(max_num, int(m.group(1)))
+            except ValueError:
+                pass
+    return "ASG-{:03d}".format(max_num + 1)
+
+
+def _codigo_dotacion_disponible(codigo):
+    """True si el código existe en Base de Dotaciones con estado DISPONIBLE (como en Dotaciones Disponibles)."""
+    if not (codigo or "").strip():
+        return True
+    reg = BaseDotaciones.query.filter(
+        BaseDotaciones.codigo == (codigo or "").strip(),
+        BaseDotaciones.estado.ilike("%disponible%"),
+    ).filter(~BaseDotaciones.estado.ilike("%asignada%")).first()
+    return reg is not None
+
+
+def _codigo_locker_disponible(codigo):
+    """True si el código existe en Lockers Disponibles con estado DISPONIBLE."""
+    if not (codigo or "").strip():
+        return True
+    return (
+        LockerDisponibles.query.filter_by(codigo=(codigo or "").strip())
+        .filter(db.func.lower(LockerDisponibles.estado) == "disponible")
+        .first()
+        is not None
+    )
+
+
+def _marcar_dotacion_asignada(codigo):
+    """Marca la primera dotación disponible con ese código como ASIGNADA en BaseDotaciones."""
+    if not (codigo or "").strip():
+        return
+    reg = (
+        BaseDotaciones.query.filter(BaseDotaciones.codigo == (codigo or "").strip())
+        .filter(BaseDotaciones.estado.ilike("%disponible%"))
+        .filter(~BaseDotaciones.estado.ilike("%asignada%"))
+        .first()
+    )
+    if reg:
+        reg.estado = "ASIGNADA"
+
+
+def _marcar_locker_asignado(codigo, area=None):
+    """Marca el locker con ese código como ASIGNADO en LockerDisponibles y en Base de Lockers."""
+    if not (codigo or "").strip():
+        return
+    cod = (codigo or "").strip()
+    reg = (
+        LockerDisponibles.query.filter_by(codigo=cod)
+        .filter(db.func.lower(LockerDisponibles.estado) == "disponible")
+        .first()
+    )
+    if reg:
+        reg.estado = "ASIGNADO"
+    q_base = BaseLockers.query.filter(BaseLockers.codigo == cod)
+    if area:
+        q_base = q_base.filter(BaseLockers.area == area)
+    reg_base = q_base.filter(db.func.lower(BaseLockers.estado) == "disponible").first()
+    if reg_base:
+        reg_base.estado = "ASIGNADO"
+
+
+def _liberar_dotacion(codigo):
+    """Vuelve a DISPONIBLE la dotación con ese código (estado ASIGNADA) en BaseDotaciones."""
+    if not (codigo or "").strip():
+        return
+    reg = (
+        BaseDotaciones.query.filter(BaseDotaciones.codigo == (codigo or "").strip())
+        .filter(BaseDotaciones.estado.ilike("%asignada%"))
+        .first()
+    )
+    if reg:
+        reg.estado = "DISPONIBLE"
+
+
+def _liberar_locker(codigo, area=None):
+    """Vuelve a DISPONIBLE el locker con ese código en LockerDisponibles y en Base de Lockers."""
+    if not (codigo or "").strip():
+        return
+    cod = (codigo or "").strip()
+    reg = LockerDisponibles.query.filter_by(codigo=cod).first()
+    if reg:
+        reg.estado = "disponible"
+    q_base = BaseLockers.query.filter(BaseLockers.codigo == cod)
+    if area:
+        q_base = q_base.filter(BaseLockers.area == area)
+    for reg_base in q_base.filter(BaseLockers.estado.ilike("%asignado%")).all():
+        reg_base.estado = "disponible"
+
 
 # Paginación: máximo registros por página en módulos (evita cargar miles de filas)
 PER_PAGE = 50
@@ -47,7 +181,7 @@ MODULOS_CONFIG = {
             {"name": "codigo", "label": "Código", "type": "text", "required": True},
             {"name": "area", "label": "Área", "type": "text"},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
-            {"name": "estado", "label": "Estado", "type": "text"},
+            {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO"]},
             {"name": "unidad", "label": "Unidad", "type": "text"},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
@@ -58,6 +192,7 @@ MODULOS_CONFIG = {
         "titulo": "Locker Disponibles",
         "icon": "key",
         "area_key": "area",
+        "solo_estado_disponible_locker": True,
         "columnas": [
             {"key": "codigo", "label": "Código"},
             {"key": "area", "label": "Área"},
@@ -68,7 +203,7 @@ MODULOS_CONFIG = {
             {"name": "codigo", "label": "Código", "type": "text", "required": True},
             {"name": "area", "label": "Área", "type": "text"},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
-            {"name": "estado", "label": "Estado", "type": "text"},
+            {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO"]},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
         "date_fields": [],
@@ -80,7 +215,6 @@ MODULOS_CONFIG = {
         "area_key": "area_uso",
         "columnas": [
             {"key": "codigo", "label": "Código"},
-            {"key": "descripcion", "label": "Descripción"},
             {"key": "cantidad", "label": "Cantidad"},
             {"key": "talla", "label": "Talla"},
             {"key": "estado", "label": "Estado"},
@@ -88,59 +222,55 @@ MODULOS_CONFIG = {
         "form_fields": [
             {"name": "codigo", "label": "Código", "type": "text"},
             {"name": "cantidad", "label": "Cantidad", "type": "number"},
-            {"name": "descripcion", "label": "Descripción", "type": "text"},
             {"name": "area_uso", "label": "Área uso", "type": "text"},
             {"name": "talla", "label": "Talla", "type": "text"},
-            {"name": "estado", "label": "Estado", "type": "text"},
-            {"name": "unidad", "label": "Unidad", "type": "text"},
-            {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
+            {"name": "estado", "label": "Estado", "type": "select", "options": ["ASIGNADA", "DISPONIBLE", "NO EXISTE"]},
         ],
         "date_fields": [],
     },
     "dotaciones-disponibles": {
-        "model": DotacionesDisponibles,
+        "model": BaseDotaciones,
         "titulo": "Dotaciones Disponibles",
         "icon": "boxes",
+        "area_key": None,
+        "no_crear": True,
+        "solo_lectura": True,
+        "solo_estado_disponible": True,
         "columnas": [
             {"key": "codigo", "label": "Código"},
             {"key": "talla", "label": "Talla"},
-            {"key": "descripcion", "label": "Descripción"},
             {"key": "cantidad", "label": "Cantidad"},
-            {"key": "unidad", "label": "Unidad"},
         ],
-        "form_fields": [
-            {"name": "codigo", "label": "Código", "type": "text"},
-            {"name": "talla", "label": "Talla", "type": "text"},
-            {"name": "descripcion", "label": "Descripción", "type": "text"},
-            {"name": "cantidad", "label": "Cantidad", "type": "number"},
-            {"name": "unidad", "label": "Unidad", "type": "text"},
-            {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
-        ],
+        "form_fields": [],
         "date_fields": [],
     },
     "registro-personal": {
-        "model": RegistroPersonal,
-        "titulo": "Registro de Personal",
+        "model": RegistroAsignaciones,
+        "titulo": "Personal Registrado",
         "icon": "users",
         "area_key": "area",
+        "solo_sin_asignacion": True,
         "columnas": [
-            {"key": "id_personal", "label": "ID Personal"},
-            {"key": "nombre", "label": "Nombre"},
-            {"key": "documento", "label": "Documento"},
+            {"key": "operario", "label": "Nombre"},
+            {"key": "identificacion", "label": "Documento"},
+            {"key": "email", "label": "Email"},
             {"key": "cargo", "label": "Cargo"},
             {"key": "area", "label": "Área"},
+            {"key": "area_lockers", "label": "Área Lockers"},
+            {"key": "estado", "label": "Estado"},
         ],
         "form_fields": [
-            {"name": "id_personal", "label": "ID Personal", "type": "text"},
-            {"name": "nombre", "label": "Nombre", "type": "text"},
-            {"name": "documento", "label": "Documento", "type": "text"},
+            {"name": "operario", "label": "Nombre", "type": "text", "required": True},
+            {"name": "identificacion", "label": "Documento", "type": "text", "required": True},
             {"name": "email", "label": "Email", "type": "text"},
             {"name": "telefono", "label": "Teléfono", "type": "text"},
             {"name": "cargo", "label": "Cargo", "type": "text"},
             {"name": "area", "label": "Área", "type": "text"},
-            {"name": "talla", "label": "Talla", "type": "text"},
+            {"name": "talla_operarios", "label": "Talla", "type": "text"},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
-            {"name": "estado", "label": "Estado", "type": "text"},
+            {"name": "codigo_lockets", "label": "Código lockers", "type": "text"},
+            {"name": "codigo_dotacion", "label": "Código dotación", "type": "text"},
+            {"name": "estado", "label": "Estado", "type": "select", "options": ["ACTIVO", "INACTIVO", "PENDIENTE"]},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
         "date_fields": [],
@@ -149,25 +279,19 @@ MODULOS_CONFIG = {
         "model": PersonalPresupuestado,
         "titulo": "Personal Presupuestado",
         "icon": "user-group",
-        "area_key": "area",
+        "area_key": None,
+        "no_crear": True,
         "columnas": [
-            {"key": "nombre", "label": "Nombre"},
-            {"key": "documento", "label": "Documento"},
-            {"key": "cargo", "label": "Cargo"},
             {"key": "area", "label": "Área"},
             {"key": "aprobados", "label": "Aprobados"},
             {"key": "contratados", "label": "Contratados"},
             {"key": "por_contratar", "label": "Por contratar"},
         ],
         "form_fields": [
-            {"name": "nombre", "label": "Nombre", "type": "text"},
-            {"name": "documento", "label": "Documento", "type": "text"},
-            {"name": "cargo", "label": "Cargo", "type": "text"},
             {"name": "area", "label": "Área", "type": "text"},
             {"name": "aprobados", "label": "Aprobados", "type": "number"},
             {"name": "contratados", "label": "Contratados", "type": "number"},
             {"name": "por_contratar", "label": "Por contratar", "type": "number"},
-            {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
         "date_fields": [],
     },
@@ -176,6 +300,7 @@ MODULOS_CONFIG = {
         "titulo": "Registro de Asignaciones",
         "icon": "clipboard-check",
         "area_key": "area",
+        "solo_con_asignacion": True,
         "columnas": [
             {"key": "id_asignaciones", "label": "ID"},
             {"key": "operario", "label": "Operario"},
@@ -197,7 +322,7 @@ MODULOS_CONFIG = {
             {"name": "talla_operarios", "label": "Talla operarios", "type": "text"},
             {"name": "talla_dotacion", "label": "Talla dotación", "type": "text"},
             {"name": "area_lockers", "label": "Área lockers", "type": "text"},
-            {"name": "estado", "label": "Estado", "type": "text"},
+            {"name": "estado", "label": "Estado", "type": "select", "options": ["ACTIVO", "INACTIVO", "PENDIENTE"]},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
         "date_fields": ["fecha_asignacion", "fecha_entrega"],
@@ -262,6 +387,22 @@ MODULOS_CONFIG = {
         "date_fields": ["fecha_ingreso"],
     },
 }
+
+# Orden de módulos en el menú (sidebar y todas las áreas)
+MODULOS_ORDER = [
+    "dotaciones-disponibles",
+    "locker-disponibles",
+    "historial-retiros",
+    "ingreso-lockers",
+    "ingreso-dotacion",
+    "base-lockers",
+    "base-dotaciones",
+    "registro-personal",
+    "personal-presupuestado",
+    "registro-asignaciones",
+]
+_MODULOS_RAW = dict(MODULOS_CONFIG)
+MODULOS_CONFIG = {k: _MODULOS_RAW[k] for k in MODULOS_ORDER}
 
 
 def login_required(f):
@@ -500,10 +641,10 @@ def registro():
 
 
 def _allowed_areas_for_user():
-    """Áreas a las que el usuario puede entrar. Admin: todas; otro: solo su área asignada."""
+    """Áreas a las que el usuario puede entrar. Superadmin y Admin: todas; otro: solo su área asignada."""
     rol = (session.get("user_rol") or "usuario").strip().lower()
     user_area = (session.get("user_area") or "").strip()
-    if rol == "admin":
+    if rol in ("superadmin", "admin"):
         return [a.nombre for a in AreaTrabajo.query.order_by(AreaTrabajo.nombre).all()]
     if user_area:
         return [user_area]
@@ -563,20 +704,41 @@ def entrar_area(nombre):
     return redirect(url_for("main.dashboard"))
 
 
-@bp.route("/dashboard")
+@bp.route("/dashboard/api/verificar-codigos")
 @login_required
 @_require_current_area
-def dashboard():
+def api_verificar_codigos():
+    """Devuelve si codigo_dotacion y codigo_lockets están disponibles (en Dotaciones/Lockers Disponibles) o asignados."""
+    from flask import jsonify
+    cod_dot = (request.args.get("codigo_dotacion") or "").strip()
+    cod_lock = (request.args.get("codigo_lockets") or "").strip()
+    out = {}
+    if cod_dot:
+        out["codigo_dotacion"] = "disponible" if _codigo_dotacion_disponible(cod_dot) else "asignado"
+    else:
+        out["codigo_dotacion"] = None
+    if cod_lock:
+        out["codigo_lockets"] = "disponible" if _codigo_locker_disponible(cod_lock) else "asignado"
+    else:
+        out["codigo_lockets"] = None
+    return jsonify(out)
+
+
+def _dashboard_stats(current_area):
+    """Calcula estadísticas del dashboard para un área. Usado por dashboard() y por api_dashboard_stats()."""
     from sqlalchemy import func
-    current_area = (session.get("current_area") or "").strip()
     total_lockers = BaseLockers.query.filter(BaseLockers.area == current_area).count()
-    disponibles = BaseLockers.query.filter(BaseLockers.area == current_area, BaseLockers.estado == "disponible").count()
-    total_dotaciones = BaseDotaciones.query.filter(BaseDotaciones.area_uso == current_area).count()
-    dotaciones_disponibles = DotacionesDisponibles.query.count()
-    total_personal = RegistroPersonal.query.filter(RegistroPersonal.area == current_area).count()
+    disponibles = BaseLockers.query.filter(
+        BaseLockers.area == current_area,
+        db.func.lower(BaseLockers.estado) == "disponible",
+    ).count()
+    total_dotaciones = BaseDotaciones.query.count()
+    dotaciones_disponibles = BaseDotaciones.query.filter(
+        db.func.lower(BaseDotaciones.estado) == "disponible",
+    ).count()
+    total_personal = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
     total_asignaciones = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
     total_retiros = HistorialRetiros.query.filter(HistorialRetiros.area == current_area).count()
-    es_admin = (session.get("user_rol") or "").strip().lower() == "admin"
     today = datetime.utcnow().date()
     seven_days_ago = today - timedelta(days=6)
     chart_by_date = dict(
@@ -598,6 +760,46 @@ def dashboard():
         d = today - timedelta(days=i)
         chart_labels.append(dias_nombres[d.weekday()] + " " + d.strftime("%d/%m")[:5])
         chart_data.append(chart_by_date.get(d, 0))
+    return {
+        "total_lockers": total_lockers,
+        "disponibles": disponibles,
+        "total_dotaciones": total_dotaciones,
+        "dotaciones_disponibles": dotaciones_disponibles,
+        "total_personal": total_personal,
+        "total_asignaciones": total_asignaciones,
+        "total_retiros": total_retiros,
+        "chart_labels": chart_labels,
+        "chart_data": chart_data,
+    }
+
+
+@bp.route("/dashboard/api/stats")
+@login_required
+@_require_current_area
+def api_dashboard_stats():
+    """Devuelve las estadísticas del dashboard en JSON para actualización en tiempo real."""
+    from flask import jsonify
+    current_area = (session.get("current_area") or "").strip()
+    stats = _dashboard_stats(current_area)
+    return jsonify(stats)
+
+
+@bp.route("/dashboard")
+@login_required
+@_require_current_area
+def dashboard():
+    current_area = (session.get("current_area") or "").strip()
+    stats = _dashboard_stats(current_area)
+    total_lockers = stats["total_lockers"]
+    disponibles = stats["disponibles"]
+    total_dotaciones = stats["total_dotaciones"]
+    dotaciones_disponibles = stats["dotaciones_disponibles"]
+    total_personal = stats["total_personal"]
+    total_asignaciones = stats["total_asignaciones"]
+    total_retiros = stats["total_retiros"]
+    chart_labels = stats["chart_labels"]
+    chart_data = stats["chart_data"]
+    es_superadmin = (session.get("user_rol") or "").strip().lower() == "superadmin"
     # Categorías para filtros del dashboard (Gestión de Módulos)
     MODULE_CATEGORIES = {
         "base-lockers": "Lockers",
@@ -622,7 +824,7 @@ def dashboard():
         total_asignaciones=total_asignaciones,
         total_retiros=total_retiros,
         modulos_config=MODULOS_CONFIG,
-        show_usuarios_module=es_admin,
+        show_usuarios_module=es_superadmin,
         chart_labels=chart_labels,
         chart_data=chart_data,
         module_categories=MODULE_CATEGORIES,
@@ -632,17 +834,18 @@ def dashboard():
 
 
 def _user_can_edit():
-    return (session.get("user_rol") or "usuario") in ("admin", "coordinador")
+    """Usuario: solo consulta. Admin, coordinador y superadmin: pueden agregar, editar y eliminar en módulos."""
+    return (session.get("user_rol") or "usuario").strip().lower() in ("superadmin", "admin", "coordinador")
 
 
-def _admin_required(f):
-    """Decorator: solo administrador."""
+def _superadmin_required(f):
+    """Decorator: solo superadmin (acceso a Gestión de usuarios)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if session.get("user_id") is None:
             return redirect(url_for("main.login"))
-        if (session.get("user_rol") or "").strip().lower() != "admin":
-            flash("Solo el administrador puede acceder a esta sección.", "error")
+        if (session.get("user_rol") or "").strip().lower() != "superadmin":
+            flash("Solo el Super Administrador puede acceder a la gestión de usuarios.", "error")
             return redirect(url_for("main.dashboard"))
         return f(*args, **kwargs)
     return decorated
@@ -650,46 +853,177 @@ def _admin_required(f):
 
 @bp.route("/dashboard/usuarios", methods=["GET", "POST"])
 @login_required
-@_admin_required
+@_superadmin_required
 def usuarios():
-    """Módulo solo admin: listar usuarios, editar Área e inactivar/activar."""
+    """Módulo solo superadmin: listar usuarios, editar info, cambiar rol, inactivar/activar y eliminar."""
+    ROLES_VALIDOS = ["superadmin", "admin", "coordinador", "usuario"]
     areas = AreaTrabajo.query.order_by(AreaTrabajo.nombre).all()
     if request.method == "POST":
+        # Eliminar usuario
+        eliminar_id = request.form.get("eliminar_usuario_id", type=int)
+        if eliminar_id:
+            if eliminar_id == session.get("user_id"):
+                flash("No puedes eliminar tu propia cuenta.", "error")
+            else:
+                user = Usuario.query.get(eliminar_id)
+                if user:
+                    db.session.delete(user)
+                    db.session.commit()
+                    flash("Usuario eliminado.", "success")
+            return redirect(url_for("main.usuarios"))
+
+        # Activar/Inactivar
         toggle_id = request.form.get("toggle_activo_id", type=int)
         if toggle_id:
             user = Usuario.query.get(toggle_id)
             if user:
                 nuevo_activo = not user.activo
-                # Actualizar solo la columna activo para no tocar password_hash ni otros campos
                 Usuario.query.filter_by(id=toggle_id).update({"activo": nuevo_activo}, synchronize_session=False)
                 db.session.commit()
                 estado = "activado" if nuevo_activo else "inactivado"
                 flash(f"Usuario {estado} correctamente.", "success")
             return redirect(url_for("main.usuarios"))
+
+        # Editar información del usuario (nombre, email, área, rol)
         edit_id = request.form.get("edit_id", type=int)
-        area_val = (request.form.get("area") or "").strip()
         if edit_id:
             user = Usuario.query.get(edit_id)
             if user:
-                user.area = area_val
+                user.nombre = (request.form.get("nombre") or "").strip() or user.nombre
+                user.email = (request.form.get("email") or "").strip() or user.email
+                rol_val = (request.form.get("rol") or "").strip().lower()
+                if rol_val in ROLES_VALIDOS:
+                    user.rol = rol_val
+                if rol_val in ("superadmin", "admin"):
+                    user.area = ""
+                else:
+                    user.area = (request.form.get("area") or "").strip()
                 db.session.commit()
-                flash("Área del usuario actualizada.", "success")
+                flash("Información del usuario actualizada.", "success")
             return redirect(url_for("main.usuarios"))
+
     users = Usuario.query.order_by(Usuario.creado_en.desc()).all()
     item_edit = None
-    edit_area = ""
     edit_id = request.args.get("edit_id", type=int)
     if edit_id:
         item_edit = Usuario.query.get(edit_id)
-        if item_edit:
-            edit_area = (item_edit.area or "").strip()
     return render_template(
         "usuarios.html",
         users=users,
         areas=areas,
         item_edit=item_edit,
-        edit_area=edit_area,
+        roles_validos=ROLES_VALIDOS,
     )
+
+
+def _registro_form_view(modulo_id):
+    """Vistas independientes de solo formulario: Ingreso dotación → BaseDotaciones; Registro personal → RegistroAsignaciones; Ingreso lockers → BaseLockers."""
+    current_area = (session.get("current_area") or "").strip()
+    if not current_area:
+        flash("Selecciona un área de trabajo.", "error")
+        return redirect(url_for("main.areas"))
+    can_edit = _user_can_edit()
+    if request.method == "POST" and can_edit:
+        if modulo_id == "ingreso-dotacion":
+            codigo = (request.form.get("codigo") or "").strip()
+            cantidad = request.form.get("cantidad", type=int) or 0
+            talla = (request.form.get("talla") or "").strip()
+            estado = (request.form.get("estado") or "disponible").strip()
+            if not codigo:
+                flash("El código es obligatorio.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
+            estado = _normalize_estado_base_dotaciones(estado)
+            obj = BaseDotaciones(codigo=codigo, cantidad=cantidad, talla=talla, estado=estado, area_uso=current_area)
+            db.session.add(obj)
+            db.session.commit()
+            flash("Dotación registrada en Base de Dotaciones.", "success")
+            return redirect(url_for("main.registro_form", modulo_id=modulo_id))
+        if modulo_id == "registro-personal":
+            nombre = (request.form.get("nombre") or "").strip()
+            documento = (request.form.get("documento") or "").strip()
+            if not nombre or not documento:
+                flash("Nombre y documento son obligatorios.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Registro de Personal", form_fields=_FORM_REGISTRO_PERSONAL, can_edit=can_edit)
+            obj = RegistroAsignaciones(
+                id_asignaciones=_get_next_id_asignaciones(),
+                operario=nombre,
+                identificacion=documento,
+                email=(request.form.get("email") or "").strip(),
+                telefono=(request.form.get("telefono") or "").strip(),
+                cargo=(request.form.get("cargo") or "").strip(),
+                area=current_area,
+                talla_operarios=(request.form.get("talla") or "").strip(),
+                area_lockers=(request.form.get("area_lockers") or "").strip(),
+                estado="Activo",
+                fecha_asignacion=datetime.utcnow(),
+                codigo_lockets="",
+                codigo_dotacion="",
+            )
+            db.session.add(obj)
+            db.session.commit()
+            flash("Personal registrado. Aparece en Personal Registrado hasta que se asigne locker o dotación.", "success")
+            return redirect(url_for("main.modulo", modulo_id="registro-personal"))
+        if modulo_id == "ingreso-lockers":
+            codigo = (request.form.get("codigo") or "").strip()
+            area = (request.form.get("area") or "").strip() or current_area
+            area_lockers = (request.form.get("area_lockers") or "").strip()
+            cantidad = max(1, request.form.get("cantidad", type=int) or 1)
+            if not codigo:
+                flash("El código es obligatorio.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit)
+            estado = _normalize_estado_base_lockers((request.form.get("estado") or "disponible").strip())
+            for _ in range(cantidad):
+                obj = BaseLockers(codigo=codigo, area=area, area_lockers=area_lockers, estado=estado)
+                db.session.add(obj)
+            db.session.commit()
+            flash("Locker(s) registrado(s) en Base de Lockers.", "success")
+            return redirect(url_for("main.registro_form", modulo_id=modulo_id))
+    if modulo_id == "ingreso-dotacion":
+        return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
+    if modulo_id == "registro-personal":
+        return render_template("registro_form.html", modulo_id=modulo_id, titulo="Registro de Personal", form_fields=_FORM_REGISTRO_PERSONAL, can_edit=can_edit, estado_activo=True, default_area=current_area)
+    if modulo_id == "ingreso-lockers":
+        return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit)
+    return None
+
+
+# Campos para los formularios de registro independientes (no almacenan en su tabla original)
+_FORM_INGRESO_DOTACION = [
+    {"name": "codigo", "label": "Código", "type": "text", "required": True},
+    {"name": "cantidad", "label": "Cantidad", "type": "number"},
+    {"name": "talla", "label": "Talla", "type": "text"},
+    {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADA", "NO EXISTE"]},
+]
+_FORM_REGISTRO_PERSONAL = [
+    {"name": "nombre", "label": "Nombre", "type": "text", "required": True},
+    {"name": "documento", "label": "Documento", "type": "text", "required": True},
+    {"name": "email", "label": "Email", "type": "email"},
+    {"name": "telefono", "label": "Teléfono", "type": "text"},
+    {"name": "cargo", "label": "Cargo", "type": "text"},
+    {"name": "area", "label": "Área", "type": "text"},
+    {"name": "talla", "label": "Talla", "type": "text"},
+    {"name": "area_lockers", "label": "Área Lockers", "type": "select", "options": ["", "VESTIER HOMBRES", "VESTIER MUJERES", "ADMINISTRATIVO"]},
+]
+_FORM_INGRESO_LOCKERS = [
+    {"name": "codigo", "label": "Código", "type": "text", "required": True},
+    {"name": "cantidad", "label": "Cantidad (lockers a agregar)", "type": "number"},
+    {"name": "area", "label": "Área", "type": "text"},
+    {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
+    {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO"]},
+]
+
+
+@bp.route("/dashboard/registro/<modulo_id>", methods=["GET", "POST"])
+@login_required
+@_require_current_area
+def registro_form(modulo_id):
+    if modulo_id not in ("ingreso-dotacion", "registro-personal", "ingreso-lockers"):
+        flash("Módulo no encontrado.", "error")
+        return redirect(url_for("main.dashboard"))
+    out = _registro_form_view(modulo_id)
+    if out is not None:
+        return out
+    return redirect(url_for("main.dashboard"))
 
 
 @bp.route("/dashboard/<modulo_id>", methods=["GET", "POST"])
@@ -699,6 +1033,9 @@ def modulo(modulo_id):
     if modulo_id not in MODULOS_CONFIG:
         flash("Módulo no encontrado.", "error")
         return redirect(url_for("main.dashboard"))
+    # Redirigir solo ingreso-dotacion e ingreso-lockers al formulario; registro-personal es listado "Personal Registrado"
+    if modulo_id in ("ingreso-dotacion", "ingreso-lockers"):
+        return redirect(url_for("main.registro_form", modulo_id=modulo_id))
     config = MODULOS_CONFIG[modulo_id]
     Model = config["model"]
     columnas = config["columnas"]
@@ -710,6 +1047,9 @@ def modulo(modulo_id):
     user_area = (session.get("user_area") or "").strip()
     current_area = (session.get("current_area") or "").strip()
     can_edit = _user_can_edit()
+
+    if request.method == "GET" and config.get("no_crear") and request.args.get("crear"):
+        return redirect(url_for("main.modulo", modulo_id=modulo_id))
 
     # POST: crear, editar o eliminar
     if request.method == "POST":
@@ -724,13 +1064,33 @@ def modulo(modulo_id):
         if eliminar_id:
             obj = Model.query.get(eliminar_id)
             if obj:
-                if user_rol == "coordinador" and area_key and user_area:
+                if user_rol == "coordinador" and area_key and user_area:  # superadmin/admin: sin restricción de área
                     if getattr(obj, area_key, None) != user_area:
                         flash("No puede eliminar registros de otra área.", "error")
                         return redirect(url_for("main.modulo", modulo_id=modulo_id, page=next_page))
+                if Model == RegistroAsignaciones:
+                    cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
+                    cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
+                    hist = HistorialRetiros(
+                        operario=getattr(obj, "operario", "") or "",
+                        identificacion=getattr(obj, "identificacion", "") or "",
+                        codigo_dotacion=cod_dot,
+                        codigo_lockets=cod_lock,
+                        area=getattr(obj, "area", "") or "",
+                        talla_operarios=getattr(obj, "talla_operarios", "") or "",
+                        talla_dotacion=getattr(obj, "talla_dotacion", "") or "",
+                        area_lockers=getattr(obj, "area_lockers", "") or "",
+                        fecha_retiro=datetime.utcnow(),
+                    )
+                    db.session.add(hist)
+                    reg_area = (getattr(obj, "area", None) or "").strip()
+                    if cod_dot:
+                        _liberar_dotacion(cod_dot)
+                    if cod_lock:
+                        _liberar_locker(cod_lock, area=reg_area)
                 db.session.delete(obj)
                 db.session.commit()
-                flash("Registro eliminado.", "success")
+                flash("Registro eliminado." + (" Pasa a Historial de Retiros y los códigos vuelven a estar disponibles." if Model == RegistroAsignaciones else ""), "success")
             return redirect(url_for("main.modulo", modulo_id=modulo_id, page=next_page))
 
         if edit_id:
@@ -742,6 +1102,8 @@ def modulo(modulo_id):
                 if getattr(obj, area_key, None) != user_area:
                     flash("No puede editar registros de otra área.", "error")
                     return redirect(url_for("main.modulo", modulo_id=modulo_id))
+            old_cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip() if Model == RegistroAsignaciones else ""
+            old_cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip() if Model == RegistroAsignaciones else ""
             for f in form_fields:
                 name = f["name"]
                 val = request.form.get(name)
@@ -761,9 +1123,38 @@ def modulo(modulo_id):
                     setattr(obj, df, datetime.utcnow())
                 if getattr(obj, df, None) is None and Model == IngresoDotacion and df == "fecha_ingreso":
                     setattr(obj, df, datetime.utcnow())
+            if Model == BaseLockers and hasattr(obj, "estado"):
+                obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
+            if Model == BaseDotaciones and hasattr(obj, "estado"):
+                obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+            # Validar Cod. Dotación y Cod. Lockers contra Dotaciones/Lockers Disponibles (Registro Asignaciones / Personal)
+            if Model == RegistroAsignaciones:
+                cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
+                cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
+                if cod_dot and not _codigo_dotacion_disponible(cod_dot):
+                    flash("El Código de dotación no está disponible (ya asignado o no existe en Dotaciones Disponibles). Por favor asigne otro.", "error")
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+                if cod_lock and not _codigo_locker_disponible(cod_lock):
+                    flash("El Código de locker no está disponible (ya asignado o no existe en Lockers Disponibles). Por favor asigne otro.", "error")
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+                # Liberar códigos que ya no se usan y marcar los nuevos como asignados
+                reg_area = (getattr(obj, "area", None) or "").strip() or current_area
+                if old_cod_dot and old_cod_dot != cod_dot:
+                    _liberar_dotacion(old_cod_dot)
+                if old_cod_lock and old_cod_lock != cod_lock:
+                    _liberar_locker(old_cod_lock, area=reg_area)
+                if cod_dot:
+                    _marcar_dotacion_asignada(cod_dot)
+                if cod_lock:
+                    _marcar_locker_asignado(cod_lock, area=reg_area)
             db.session.commit()
             flash("Registro actualizado.", "success")
             return redirect(url_for("main.modulo", modulo_id=modulo_id, page=next_page))
+
+        if config.get("no_crear"):
+            return redirect(url_for("main.modulo", modulo_id=modulo_id))
 
         # Crear
         obj = Model()
@@ -779,24 +1170,74 @@ def modulo(modulo_id):
         # Asignar área actual en módulos con area_key
         if area_key and current_area and hasattr(obj, area_key):
             setattr(obj, area_key, current_area)
-        # Asegurar fechas obligatorias
-        if Model == RegistroAsignaciones and getattr(obj, "fecha_asignacion", None) is None:
-            obj.fecha_asignacion = datetime.utcnow()
+        # Asegurar fechas obligatorias y ID ASG-XX
+        if Model == RegistroAsignaciones:
+            if getattr(obj, "fecha_asignacion", None) is None:
+                obj.fecha_asignacion = datetime.utcnow()
+            if not (getattr(obj, "estado", None) or "").strip():
+                obj.estado = "Activo"
+            if not (getattr(obj, "id_asignaciones", None) or "").strip():
+                obj.id_asignaciones = _get_next_id_asignaciones()
         if Model == HistorialRetiros and getattr(obj, "fecha_retiro", None) is None:
             obj.fecha_retiro = datetime.utcnow()
         if Model == IngresoLockers and getattr(obj, "fecha_ingreso", None) is None:
             obj.fecha_ingreso = datetime.utcnow()
         if Model == IngresoDotacion and getattr(obj, "fecha_ingreso", None) is None:
             obj.fecha_ingreso = datetime.utcnow()
+        if Model == BaseLockers and hasattr(obj, "estado"):
+            obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
+        if Model == BaseDotaciones and hasattr(obj, "estado"):
+            obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+        # Validar Cod. Dotación y Cod. Lockers al crear RegistroAsignaciones
+        if Model == RegistroAsignaciones:
+            cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
+            cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
+            if cod_dot and not _codigo_dotacion_disponible(cod_dot):
+                flash("El Código de dotación no está disponible (ya asignado o no existe en Dotaciones Disponibles). Por favor asigne otro.", "error")
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+            if cod_lock and not _codigo_locker_disponible(cod_lock):
+                flash("El Código de locker no está disponible (ya asignado o no existe en Lockers Disponibles). Por favor asigne otro.", "error")
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+            if cod_dot:
+                _marcar_dotacion_asignada(cod_dot)
+            if cod_lock:
+                _marcar_locker_asignado(cod_lock, area=current_area)
         db.session.add(obj)
         db.session.commit()
         flash("Registro creado.", "success")
         return redirect(url_for("main.modulo", modulo_id=modulo_id))
 
     # GET: listar con paginación filtrada por área actual y búsqueda
+    from sqlalchemy import or_, and_
     query = Model.query
     if area_key and current_area and hasattr(Model, area_key):
-        query = query.filter(getattr(Model, area_key) == current_area)
+        if Model == BaseDotaciones and area_key == "area_uso":
+            # Base dotaciones: mostrar todos los registros de la tabla (sin filtrar por área)
+            pass
+        else:
+            query = query.filter(getattr(Model, area_key) == current_area)
+    # Personal Registrado: solo RegistroAsignaciones sin locker ni dotación asignados
+    if config.get("solo_sin_asignacion") and Model == RegistroAsignaciones:
+        query = query.filter(
+            or_(RegistroAsignaciones.codigo_lockets.is_(None), RegistroAsignaciones.codigo_lockets == ""),
+            or_(RegistroAsignaciones.codigo_dotacion.is_(None), RegistroAsignaciones.codigo_dotacion == ""),
+        )
+    # Registro de asignaciones: solo registros que ya tienen locker o dotación asignada
+    if config.get("solo_con_asignacion") and Model == RegistroAsignaciones:
+        query = query.filter(
+            or_(
+                and_(RegistroAsignaciones.codigo_lockets.isnot(None), RegistroAsignaciones.codigo_lockets != ""),
+                and_(RegistroAsignaciones.codigo_dotacion.isnot(None), RegistroAsignaciones.codigo_dotacion != ""),
+            )
+        )
+    # Dotaciones Disponibles: solo registros con estado DISPONIBLE en Base de Dotaciones
+    if config.get("solo_estado_disponible") and Model == BaseDotaciones:
+        query = query.filter(BaseDotaciones.estado.ilike("%disponible%"))
+        query = query.filter(~BaseDotaciones.estado.ilike("%asignada%"))
+    if config.get("solo_estado_disponible_locker") and Model == LockerDisponibles:
+        query = query.filter(db.func.lower(LockerDisponibles.estado) == "disponible")
     search_q = (request.args.get("q") or "").strip()
     if search_q:
         from sqlalchemy import or_, cast, String
@@ -818,22 +1259,70 @@ def modulo(modulo_id):
     page = max(1, request.args.get("page", 1, type=int))
     total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     page = min(page, total_pages)
-    rows = (
-        query.order_by(Model.id.desc())
-        .limit(PER_PAGE)
-        .offset((page - 1) * PER_PAGE)
-        .all()
-    )
+    from sqlalchemy import text
+    if Model == BaseDotaciones:
+        # Orden: primero códigos numéricos (001, 002, ...), luego los que inician con letra
+        rows = (
+            query.order_by(
+                text("(codigo REGEXP '^[0-9]+$') DESC"),
+                text("(CASE WHEN codigo REGEXP '^[0-9]+$' THEN CAST(codigo AS UNSIGNED) ELSE 999999 END)"),
+                BaseDotaciones.codigo,
+            )
+            .limit(PER_PAGE)
+            .offset((page - 1) * PER_PAGE)
+            .all()
+        )
+    else:
+        rows = (
+            query.order_by(Model.id.desc())
+            .limit(PER_PAGE)
+            .offset((page - 1) * PER_PAGE)
+            .all()
+        )
     items = []
     for row in rows:
         d = {"id": row.id}
         for col in columnas:
             val = getattr(row, col["key"], None)
+            if col["key"] == "id_asignaciones" and Model == RegistroAsignaciones:
+                if not (val or "").strip():
+                    val = "ASG-{:03d}".format(row.id)
+            if col["key"] == "estado" and Model == BaseDotaciones and val:
+                val = _normalize_estado_base_dotaciones(val)
+            if col["key"] == "estado" and Model == RegistroAsignaciones:
+                codigo_l = (getattr(row, "codigo_lockets", None) or "").strip()
+                codigo_d = (getattr(row, "codigo_dotacion", None) or "").strip()
+                if not codigo_l and not codigo_d:
+                    val = "Pendiente"
+                    d["_estado_pendiente"] = True
+                elif (val or "").lower() == "activa":
+                    val = "Activo"
             if val is not None and hasattr(val, "strftime"):
                 d[col["key"]] = val.strftime("%Y-%m-%d")
             else:
                 d[col["key"]] = val
         items.append(d)
+    pendientes_sin_asignar = []
+    pendientes_count = 0
+    if modulo_id == "registro-asignaciones" and current_area:
+        pendientes_sin_asignar = (
+            RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area)
+            .filter(
+                or_(
+                    RegistroAsignaciones.codigo_lockets.is_(None),
+                    RegistroAsignaciones.codigo_lockets == "",
+                ),
+                or_(
+                    RegistroAsignaciones.codigo_dotacion.is_(None),
+                    RegistroAsignaciones.codigo_dotacion == "",
+                ),
+            )
+            .order_by(RegistroAsignaciones.creado_en.desc())
+            .limit(100)
+            .all()
+        )
+        pendientes_count = len(pendientes_sin_asignar)
+
     item_edit = None
     edit_data = {}
     edit_id = request.args.get("edit_id", type=int)
@@ -848,10 +1337,52 @@ def modulo(modulo_id):
                 for f in form_fields:
                     name = f["name"]
                     val = getattr(item_edit, name, None)
+                    if name == "estado" and Model == BaseDotaciones and val:
+                        val = _normalize_estado_base_dotaciones(val)
+                    if name == "estado" and Model == RegistroAsignaciones and val:
+                        val = "ACTIVO" if (val or "").strip().lower() == "activa" else (val or "ACTIVO").strip().upper()
+                    if name == "estado" and Model == BaseLockers and val is not None:
+                        val = (val or "disponible").strip().upper()
+                    if name == "estado" and Model == LockerDisponibles and val is not None:
+                        val = (val or "disponible").strip().upper()
                     if val is not None and name in date_fields and hasattr(val, "strftime"):
                         edit_data[name] = val.strftime("%Y-%m-%d")
                     else:
                         edit_data[name] = val
+        # Si hubo error de validación, usar datos del formulario guardados en sesión
+        saved_form = session.pop("modulo_edit_form", {}).get(modulo_id)
+        if saved_form:
+            edit_data = {k: saved_form.get(k, "") for k in (f["name"] for f in form_fields)}
+    # Al crear, si hubo error de validación, prellenar con datos guardados en sesión
+    if request.args.get("crear") and not edit_data:
+        saved_crear = session.pop("modulo_crear_form", {}).get(modulo_id)
+        if saved_crear:
+            edit_data = {k: saved_crear.get(k, "") for k in (f["name"] for f in form_fields)}
+    # Listas de códigos para selects: disponibles (asignación) o todos (historial retiros)
+    form_field_names = [f["name"] for f in form_fields]
+    opciones_dotacion = []
+    opciones_locker = []
+    if "codigo_dotacion" in form_field_names:
+        if modulo_id == "historial-retiros":
+            opciones_dotacion = [r[0] for r in BaseDotaciones.query.with_entities(BaseDotaciones.codigo).distinct().order_by(BaseDotaciones.codigo).all() if r[0]]
+        else:
+            opciones_dotacion = [
+                r[0] for r in
+                BaseDotaciones.query.filter(BaseDotaciones.estado.ilike("%disponible%"))
+                .filter(~BaseDotaciones.estado.ilike("%asignada%"))
+                .with_entities(BaseDotaciones.codigo)
+                .distinct()
+                .order_by(BaseDotaciones.codigo)
+                .all()
+            ]
+            opciones_dotacion = [c for c in opciones_dotacion if c]
+    if "codigo_lockets" in form_field_names:
+        q = LockerDisponibles.query
+        if modulo_id != "historial-retiros":
+            q = q.filter(db.func.lower(LockerDisponibles.estado) == "disponible")
+        if current_area:
+            q = q.filter(LockerDisponibles.area == current_area)
+        opciones_locker = [r[0] for r in q.with_entities(LockerDisponibles.codigo).order_by(LockerDisponibles.codigo).all()]
     return render_template(
         "modulo.html",
         modulo_id=modulo_id,
@@ -861,11 +1392,16 @@ def modulo(modulo_id):
         items=items,
         item_edit=item_edit,
         edit_data=edit_data,
+        opciones_dotacion=opciones_dotacion,
+        opciones_locker=opciones_locker,
         modulos_config=MODULOS_CONFIG,
-        can_edit=can_edit,
+        can_edit=can_edit and not config.get("solo_lectura", False),
+        can_crear=not config.get("no_crear", False),
         page=page,
         total_pages=total_pages,
         total=total,
         per_page=PER_PAGE,
         search_q=search_q,
+        pendientes_sin_asignar=pendientes_sin_asignar if modulo_id == "registro-asignaciones" else [],
+        pendientes_count=pendientes_count if modulo_id == "registro-asignaciones" else 0,
     )
