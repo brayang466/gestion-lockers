@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ titulo }} - LockerBeef{% endblock %}
 {% block content %}
+<div class="modulo-page">
 <h1>{{ titulo }}</h1>
 <p class="hint">Listado y alta/edición de registros.</p>
 
@@ -216,8 +217,20 @@
     </div>
   </div>
 </div>
+</div><!-- .modulo-page -->
 
 <style>
+  /* Animación de entrada al módulo */
+  .modulo-page {
+    animation: moduloEnter 0.45s ease-out forwards;
+  }
+  @keyframes moduloEnter {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .modulo-page { animation: none; }
+  }
   /* Badge oval/pill para todos los estados */
   .estado-badge {
     display: inline-block;

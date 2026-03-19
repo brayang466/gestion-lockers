@@ -2,7 +2,20 @@
  * Configuración de cada módulo: API path, columnas de la tabla y campos del formulario.
  * type: 'text' | 'number' | 'date' | 'textarea'
  */
-export const MODULES = [
+const MODULES_ORDER = [
+  'dotaciones-disponibles',
+  'locker-disponibles',
+  'historial-retiros',
+  'ingreso-lockers',
+  'ingreso-dotacion',
+  'base-lockers',
+  'base-dotaciones',
+  'registro-personal',
+  'personal-presupuestado',
+  'registro-asignaciones',
+]
+
+const MODULES_RAW = [
   {
     path: 'base-lockers',
     title: 'Base de Lockers',
@@ -50,7 +63,6 @@ export const MODULES = [
     apiPath: '/api/base-dotaciones',
     columns: [
       { key: 'codigo', label: 'Código' },
-      { key: 'descripcion', label: 'Descripción' },
       { key: 'cantidad', label: 'Cantidad' },
       { key: 'talla', label: 'Talla' },
       { key: 'estado', label: 'Estado' },
@@ -58,12 +70,9 @@ export const MODULES = [
     formFields: [
       { name: 'codigo', label: 'Código', type: 'text' },
       { name: 'cantidad', label: 'Cantidad', type: 'number' },
-      { name: 'descripcion', label: 'Descripción', type: 'text' },
       { name: 'area_uso', label: 'Área uso', type: 'text' },
       { name: 'talla', label: 'Talla', type: 'text' },
       { name: 'estado', label: 'Estado', type: 'text' },
-      { name: 'unidad', label: 'Unidad', type: 'text' },
-      { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
     ],
   },
   {
@@ -74,17 +83,12 @@ export const MODULES = [
     columns: [
       { key: 'codigo', label: 'Código' },
       { key: 'talla', label: 'Talla' },
-      { key: 'descripcion', label: 'Descripción' },
       { key: 'cantidad', label: 'Cantidad' },
-      { key: 'unidad', label: 'Unidad' },
     ],
     formFields: [
       { name: 'codigo', label: 'Código', type: 'text' },
       { name: 'talla', label: 'Talla', type: 'text' },
-      { name: 'descripcion', label: 'Descripción', type: 'text' },
       { name: 'cantidad', label: 'Cantidad', type: 'number' },
-      { name: 'unidad', label: 'Unidad', type: 'text' },
-      { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
     ],
   },
   {
@@ -227,6 +231,8 @@ export const MODULES = [
     ],
   },
 ]
+
+export const MODULES = MODULES_ORDER.map((path) => MODULES_RAW.find((m) => m.path === path))
 
 export function getModuleByPath(path) {
   return MODULES.find((m) => m.path === path) || null

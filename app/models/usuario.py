@@ -8,7 +8,7 @@ class Usuario(db.Model):
     nombre = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), nullable=False, unique=True)
     password_hash = db.Column(db.String(255), default="")
-    rol = db.Column(db.String(30), default="admin")  # admin | coordinador | usuario
+    rol = db.Column(db.String(30), default="usuario")  # superadmin | admin | coordinador | usuario
     area = db.Column(db.String(100), default="")  # área asignada (para coordinador)
     palabra_clave = db.Column(db.String(80), default="")  # pista para recordar contraseña (se muestra al fallar login)
     activo = db.Column(db.Boolean, default=True)

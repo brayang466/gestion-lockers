@@ -4,14 +4,14 @@
 <div class="usuarios-page">
     <header class="usuarios-header">
         <h1>Gestión de usuarios</h1>
-        <p class="hint">Usuarios registrados en el aplicativo. Puedes asignar o modificar el <strong>Área</strong> e <strong>inactivar o activar</strong> a cada usuario. Un usuario inactivo no podrá ingresar al aplicativo.</p>
+        <p class="hint">Usuarios registrados en el aplicativo. Puedes <strong>editar información</strong> (nombre, correo, área y rol), <strong>activar/inactivar</strong> y <strong>eliminar</strong> usuarios. Un usuario inactivo no podrá ingresar al aplicativo.</p>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-    <div class="flash-wrap">
+    <div class="usuarios-resultado-wrap" role="status">
         {% for category, msg in messages %}
-        <div class="flash flash-{{ category }}" role="alert">{{ msg }}</div>
+        <p class="usuarios-resultado usuarios-resultado-{{ category }}">{{ msg }}</p>
         {% endfor %}
     </div>
     {% endif %}
@@ -19,21 +19,43 @@
 
     {% if item_edit %}
     <div class="modulo-form-wrap usuarios-form-area">
-        <h2>Editar área — {{ item_edit.nombre or item_edit.email }}</h2>
+        <h2>Editar usuario — {{ item_edit.nombre or item_edit.email }}</h2>
         <form method="post" action="{{ url_for('main.usuarios') }}" class="modulo-form">
             <input type="hidden" name="edit_id" value="{{ item_edit.id }}">
             <div class="form-group">
+                <label for="nombre">Nombre</label>
+                <input type="text" id="nombre" name="nombre" class="form-input" value="{{ item_edit.nombre or '' }}" required>
+            </div>
+            <div class="form-group">
+                <label for="email">Correo</label>
+                <input type="email" id="email" name="email" class="form-input" value="{{ item_edit.email or '' }}" required>
+            </div>
+            <div class="form-group">
                 <label for="area">Área</label>
+                {% if (item_edit.rol or '')|lower in ('superadmin', 'admin') %}
+                <p class="area-no-aplica" id="area">NO APLICA</p>
+                <input type="hidden" name="area" value="">
+                <p class="hint hint-area">Super Administrador y Administrador tienen acceso a todas las áreas; no requieren área asignada.</p>
+                {% else %}
                 <select id="area" name="area" class="form-select">
                     <option value="">— Sin asignar —</option>
                     {% for a in areas %}
-                    <option value="{{ a.nombre }}" {% if edit_area == a.nombre %}selected{% endif %}>{{ a.nombre }}</option>
+                    <option value="{{ a.nombre }}" {% if (item_edit.area or '') == a.nombre %}selected{% endif %}>{{ a.nombre }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+            </div>
+            <div class="form-group">
+                <label for="rol">Rol</label>
+                <select id="rol" name="rol" class="form-select">
+                    {% for r in roles_validos %}
+                    <option value="{{ r }}" {% if (item_edit.rol or 'usuario')|lower == r %}selected{% endif %}>{{ 'Super Administrador' if r == 'superadmin' else r|capitalize }}</option>
                     {% endfor %}
                 </select>
             </div>
-            <div class="form-actions">
-                <button type="submit" class="btn btn-primary">Guardar área</button>
-                <a href="{{ url_for('main.usuarios') }}" class="btn btn-cancel">Cancelar</a>
+            <div class="form-actions usuarios-form-actions">
+                <button type="submit" class="btn-accion btn-guardar">Guardar cambios</button>
+                <a href="{{ url_for('main.usuarios') }}" class="btn-accion btn-cancelar">Cancelar</a>
             </div>
         </form>
     </div>
@@ -67,9 +89,9 @@
                     <td class="cell-nombre">{{ u.nombre or '—' }}</td>
                     <td class="cell-email">{{ u.email or '—' }}</td>
                     <td class="cell-rol">
-                        <span class="badge badge-{{ u.rol or 'usuario' }}">{{ (u.rol or 'usuario')|capitalize }}</span>
+                        <span class="badge badge-{{ u.rol or 'usuario' }}">{{ 'Super Administrador' if (u.rol or 'usuario')|lower == 'superadmin' else (u.rol or 'usuario')|capitalize }}</span>
                     </td>
-                    <td class="cell-area">{{ (u.area or '—')|upper }}</td>
+                    <td class="cell-area">{% if (u.rol or '')|lower in ('superadmin', 'admin') %}NO APLICA{% else %}{{ (u.area or '—')|upper }}{% endif %}</td>
                     <td class="cell-activo">
                         {% if u.activo %}
                         <span class="estado disponible">Activo</span>
@@ -79,28 +101,49 @@
                     </td>
                     <td class="cell-fecha">{{ u.creado_en.strftime('%d/%m/%Y %H:%M') if u.creado_en else '—' }}</td>
                     <td class="td-actions">
-                        <a href="{{ url_for('main.usuarios', edit_id=u.id) }}" class="btn-editar" title="Editar área">
+                        <a href="{{ url_for('main.usuarios', edit_id=u.id) }}" class="btn-accion btn-editar" title="Editar información">
                             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                            Editar área
+                            Editar
                         </a>
-                        <form method="post" action="{{ url_for('main.usuarios') }}" class="form-inline-btn" onsubmit="return confirm('{% if u.activo %}{% if u.id == session.get('user_id') %}¿Inactivar tu propia cuenta? No podrás ingresar hasta que otro administrador te reactive.{% else %}¿Inactivar a este usuario? No podrá ingresar hasta que lo reactives.{% endif %}{% else %}¿Activar a este usuario?{% endif %}');">
+                        <form method="post" action="{{ url_for('main.usuarios') }}" class="form-inline-btn form-toggle-activo" data-action="{{ 'inactivar' if u.activo else 'activar' }}" data-nombre="{{ u.nombre or u.email }}" data-es-propio="{{ '1' if u.id == session.get('user_id') else '' }}">
                             <input type="hidden" name="toggle_activo_id" value="{{ u.id }}">
-                            <button type="submit" class="btn-toggle-activo {% if u.activo %}btn-inactivar{% else %}btn-activar{% endif %}" title="{{ 'Inactivar' if u.activo else 'Activar' }}">
-                                {% if u.activo %}
-                                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
-                                Inactivar
-                                {% else %}
-                                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                Activar
-                                {% endif %}
+                            <button type="button" class="btn-accion btn-toggle-activo {% if u.activo %}btn-inactivar{% else %}btn-activar{% endif %} js-open-modal-toggle" title="{{ 'Inactivar' if u.activo else 'Activar' }}">
+                                {% if u.activo %}<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>{% else %}<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>{% endif %}
+                                {% if u.activo %}Inactivar{% else %}Activar{% endif %}
                             </button>
                         </form>
+                        {% if u.id != session.get('user_id') %}
+                        <form method="post" action="{{ url_for('main.usuarios') }}" class="form-inline-btn" onsubmit="return confirm('¿Eliminar a {{ u.nombre or u.email }}? Esta acción no se puede deshacer.');">
+                            <input type="hidden" name="eliminar_usuario_id" value="{{ u.id }}">
+                            <button type="submit" class="btn-accion btn-eliminar" title="Eliminar usuario">
+                                <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                Eliminar
+                            </button>
+                        </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
                 {% endif %}
             </tbody>
         </table>
+    </div>
+
+    <!-- Modal Activar / Inactivar -->
+    <div id="modalToggleEstado" class="modal-toggle-overlay" role="dialog" aria-modal="true" aria-labelledby="modalToggleTitulo" hidden>
+        <div class="modal-toggle-backdrop"></div>
+        <div class="modal-toggle-card">
+            <div class="modal-toggle-icon-wrap" id="modalToggleIconWrap">
+                <svg class="modal-toggle-icon modal-toggle-icon-inactivar" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>
+                <svg class="modal-toggle-icon modal-toggle-icon-activar" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <h2 id="modalToggleTitulo" class="modal-toggle-titulo">Confirmar acción</h2>
+            <p class="modal-toggle-mensaje" id="modalToggleMensaje"></p>
+            <div class="modal-toggle-actions">
+                <button type="button" class="btn-accion btn-modal-cancelar js-modal-toggle-cerrar">Cancelar</button>
+                <button type="button" class="btn-accion btn-modal-confirmar js-modal-toggle-confirmar" id="modalToggleConfirmar">Confirmar</button>
+            </div>
+        </div>
     </div>
 </div>
 <style>
@@ -133,6 +176,16 @@
         outline: none;
         border-color: var(--verde);
     }
+    .area-no-aplica {
+        margin: 0;
+        padding: 0.55rem 0.75rem;
+        font-weight: 600;
+        color: var(--gris-muted);
+        background: #f1f5f9;
+        border-radius: 8px;
+        border: 1px dashed #cbd5e1;
+    }
+    .hint-area { margin-top: 0.35rem; font-size: 0.85rem; color: var(--gris-muted); }
     .usuarios-table-wrap { margin-top: 0.5rem; }
     .usuarios-table .cell-nombre { font-weight: 600; color: var(--gris-texto); }
     .usuarios-table .cell-email { color: var(--gris-muted); font-size: 0.9rem; }
@@ -147,25 +200,210 @@
     .badge-admin { background: #dbeafe; color: #1e40af; }
     .badge-coordinador { background: #fef3c7; color: #92400e; }
     .badge-usuario { background: #f1f5f9; color: var(--gris-texto); }
+    .badge-superadmin { background: #fce7f3; color: #9d174d; }
     .usuarios-table .td-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
     .form-inline-btn { display: inline; margin: 0; }
-    .btn-toggle-activo {
+    .btn-accion {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
-        padding: 0.4rem 0.65rem;
-        font-size: 0.85rem;
+        gap: 0.4rem;
+        padding: 0.5rem 0.85rem;
+        font-size: 0.875rem;
+        font-weight: 500;
         font-family: inherit;
-        border: none;
-        border-radius: 6px;
+        border-radius: 8px;
         cursor: pointer;
-        background: #fef3c7;
-        color: #92400e;
-        transition: background 0.2s, color 0.2s;
+        text-decoration: none;
+        border: 1px solid transparent;
+        transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
     }
-    .btn-toggle-activo:hover { background: #fde68a; }
-    .btn-toggle-activo.btn-activar { background: #d1fae5; color: #047857; }
-    .btn-toggle-activo.btn-activar:hover { background: #a7f3d0; }
-    .btn-toggle-activo .icon { width: 1rem; height: 1rem; flex-shrink: 0; }
+    .btn-accion .icon { width: 1.05rem; height: 1.05rem; flex-shrink: 0; }
+    .btn-editar {
+        background: #eff6ff;
+        color: #1d4ed8;
+        border-color: #bfdbfe;
+    }
+    .btn-editar:hover {
+        background: #dbeafe;
+        border-color: #93c5fd;
+        box-shadow: 0 1px 3px rgba(29, 78, 216, 0.15);
+    }
+    .btn-toggle-activo {
+        background: #fffbeb;
+        color: #b45309;
+        border-color: #fde68a;
+    }
+    .btn-toggle-activo:hover { background: #fef3c7; border-color: #fcd34d; box-shadow: 0 1px 3px rgba(180, 83, 9, 0.15); }
+    .btn-toggle-activo.btn-activar {
+        background: #ecfdf5;
+        color: #047857;
+        border-color: #a7f3d0;
+    }
+    .btn-toggle-activo.btn-activar:hover { background: #d1fae5; border-color: #6ee7b7; box-shadow: 0 1px 3px rgba(4, 120, 87, 0.15); }
+    .btn-eliminar {
+        background: #fef2f2;
+        color: #b91c1c;
+        border-color: #fecaca;
+    }
+    .btn-eliminar:hover {
+        background: #fee2e2;
+        border-color: #fca5a5;
+        box-shadow: 0 1px 3px rgba(185, 28, 28, 0.15);
+    }
+    .form-input { width: 100%; padding: 0.55rem 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; }
+    .usuarios-form-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1rem; }
+    .btn-guardar { background: #059669; color: #fff; border-color: #047857; }
+    .btn-guardar:hover { background: #047857; border-color: #065f46; box-shadow: 0 2px 4px rgba(5, 150, 105, 0.3); }
+    .btn-cancelar { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+    .btn-cancelar:hover { background: #e2e8f0; border-color: #cbd5e1; color: #334155; }
+
+    /* Mensaje único del cambio realizado (encima de la tabla) */
+    .usuarios-resultado-wrap { margin-bottom: 1rem; }
+    .usuarios-resultado {
+        margin: 0;
+        padding: 0.75rem 1.25rem;
+        border-radius: 10px;
+        font-size: 0.95rem;
+        font-weight: 500;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        animation: resultadoAppear 0.35s ease;
+    }
+    .usuarios-resultado-success { background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%); color: #065f46; border: 1px solid #6ee7b7; }
+    .usuarios-resultado-error { background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); color: #991b1b; border: 1px solid #fca5a5; }
+    .usuarios-resultado-info { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); color: #1e40af; border: 1px solid #93c5fd; }
+    @keyframes resultadoAppear { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Modal Activar / Inactivar */
+    .modal-toggle-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+    }
+    .modal-toggle-overlay[data-open="true"] {
+        opacity: 1;
+        visibility: visible;
+    }
+    .modal-toggle-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.5);
+        backdrop-filter: blur(4px);
+        cursor: pointer;
+    }
+    .modal-toggle-card {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        padding: 1.75rem 1.5rem;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
+        text-align: center;
+        transform: scale(0.95) translateY(10px);
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .modal-toggle-overlay[data-open="true"] .modal-toggle-card {
+        transform: scale(1) translateY(0);
+    }
+    .modal-toggle-icon-wrap {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 1rem;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-toggle-icon-inactivar,
+    .modal-toggle-icon-activar { display: none; }
+    .modal-toggle-overlay[data-action="inactivar"] .modal-toggle-icon-inactivar { display: block; }
+    .modal-toggle-overlay[data-action="inactivar"] .modal-toggle-icon-wrap { background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); color: #b45309; }
+    .modal-toggle-overlay[data-action="activar"] .modal-toggle-icon-activar { display: block; }
+    .modal-toggle-overlay[data-action="activar"] .modal-toggle-icon-wrap { background: linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%); color: #047857; }
+    .modal-toggle-icon { width: 28px; height: 28px; }
+    .modal-toggle-titulo {
+        margin: 0 0 0.5rem;
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .modal-toggle-mensaje {
+        margin: 0 0 1.5rem;
+        font-size: 0.9375rem;
+        line-height: 1.5;
+        color: #64748b;
+    }
+    .modal-toggle-actions {
+        display: flex;
+        gap: 0.75rem;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    .btn-modal-cancelar { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+    .btn-modal-cancelar:hover { background: #e2e8f0; color: #334155; }
+    .btn-modal-confirmar { background: #059669; color: #fff; border-color: #047857; }
+    .modal-toggle-overlay[data-action="inactivar"] .btn-modal-confirmar { background: #d97706; color: #fff; border-color: #b45309; }
+    .modal-toggle-overlay[data-action="inactivar"] .btn-modal-confirmar:hover { background: #b45309; box-shadow: 0 2px 6px rgba(217, 119, 6, 0.35); }
+    .modal-toggle-overlay[data-action="activar"] .btn-modal-confirmar:hover { background: #047857; box-shadow: 0 2px 6px rgba(5, 150, 105, 0.35); }
 </style>
+<script>
+(function() {
+    var modal = document.getElementById('modalToggleEstado');
+    var titulo = document.getElementById('modalToggleTitulo');
+    var mensaje = document.getElementById('modalToggleMensaje');
+    var btnConfirmar = document.getElementById('modalToggleConfirmar');
+    var formToSubmit = null;
+
+    function openModal(form) {
+        formToSubmit = form;
+        var action = form.dataset.action;
+        var nombre = form.dataset.nombre || 'este usuario';
+        var esPropio = form.dataset.esPropio === '1';
+        modal.setAttribute('data-action', action);
+        modal.removeAttribute('hidden');
+        modal.setAttribute('data-open', 'true');
+        if (action === 'inactivar') {
+            titulo.textContent = 'Inactivar usuario';
+            mensaje.textContent = esPropio
+                ? 'Tu cuenta dejará de estar activa y no podrás ingresar hasta que un Super Administrador te reactive.'
+                : '¿Inactivar a ' + nombre + '? No podrá ingresar al aplicativo hasta que lo reactives.';
+        } else {
+            titulo.textContent = 'Activar usuario';
+            mensaje.textContent = '¿Activar a ' + nombre + '? Podrá volver a ingresar al aplicativo.';
+        }
+        btnConfirmar.focus();
+    }
+    function closeModal() {
+        modal.setAttribute('data-open', 'false');
+        modal.setAttribute('hidden', '');
+        formToSubmit = null;
+    }
+    function confirmSubmit() {
+        if (formToSubmit) {
+            formToSubmit.submit();
+        }
+        closeModal();
+    }
+    modal.querySelector('.modal-toggle-backdrop').addEventListener('click', closeModal);
+    modal.querySelector('.js-modal-toggle-cerrar').addEventListener('click', closeModal);
+    btnConfirmar.addEventListener('click', confirmSubmit);
+    modal.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeModal();
+    });
+    document.querySelectorAll('.js-open-modal-toggle').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var form = this.closest('form.form-toggle-activo');
+            if (form) openModal(form);
+        });
+    });
+})();
+</script>
 {% endblock %}

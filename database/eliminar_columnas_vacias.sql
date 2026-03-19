@@ -1,0 +1,15 @@
+-- Elimina columnas que están 100% vacías y no se usan en la aplicación.
+-- MySQL no soporta DROP COLUMN IF EXISTS; usar el script Python que comprueba antes de borrar:
+--   python database/aplicar_eliminar_columnas_vacias.py
+--
+-- Referencia de columnas que se eliminan:
+-- registro_asignaciones: personal_id, locker_id, dotacion_id (nunca se asignan; se usan codigo_lockets/codigo_dotacion)
+-- registro_asignaciones: fecha_devolucion (legacy; la app usa fecha_entrega)
+-- usuarios: telefono (no está en el modelo, 100% vacía)
+--
+-- Si prefieres ejecutar a mano (solo si la columna existe):
+-- ALTER TABLE registro_asignaciones DROP COLUMN personal_id;
+-- ALTER TABLE registro_asignaciones DROP COLUMN locker_id;
+-- ALTER TABLE registro_asignaciones DROP COLUMN dotacion_id;
+-- ALTER TABLE registro_asignaciones DROP COLUMN fecha_devolucion;
+-- ALTER TABLE usuarios DROP COLUMN telefono;

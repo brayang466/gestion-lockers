@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
+{% from 'includes/module_icons.html' import module_icon %}
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -88,6 +89,7 @@
         .nav-link {
             display: inline-flex;
             align-items: center;
+            gap: 0.4rem;
             padding: 0.4rem 0.75rem;
             font-size: 0.875rem;
             font-weight: 500;
@@ -95,11 +97,14 @@
             background: rgba(255,255,255,0.2);
             border-radius: 8px;
             text-decoration: none;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.15s ease;
         }
+        .nav-link .modulo-icon-svg svg { width: 18px; height: 18px; flex-shrink: 0; }
         .nav-link:hover {
             background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
         }
+        .nav-link:active { transform: translateY(0); }
         .nav-area {
             font-size: 0.8rem;
             font-weight: 700;
@@ -115,10 +120,18 @@
             margin: 0 auto;
             padding: 1.5rem 1rem;
             width: 100%;
+            animation: pageEnter 0.4s ease-out forwards;
         }
         .container:has(.dashboard-layout) {
             max-width: none;
             padding: 0;
+        }
+        @keyframes pageEnter {
+            from { opacity: 0; transform: translateY(14px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .container { animation: none; }
         }
         h1 {
             font-size: 1.5rem;
@@ -566,16 +579,66 @@
             .dashboard-header { padding: 0.85rem 1rem; margin-bottom: 0.75rem; }
             .modulo-table-wrap { -webkit-overflow-scrolling: touch; overflow-x: auto; }
         }
+
+        /* Transición de navegación y barra de progreso */
+        .nav-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            z-index: 9999;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .nav-progress-bar {
+            height: 100%;
+            background: var(--verde);
+            width: 0;
+            transition: none;
+        }
+        body.nav-loading .nav-progress-bar {
+            width: 72%;
+            transition: width 0.3s ease-out;
+        }
+        body.nav-loading .container {
+            opacity: 0.92;
+            transition: opacity 0.2s ease;
+        }
+        html.nav-completing .nav-progress-bar {
+            width: 72%;
+            transition: width 0.25s ease-out;
+        }
+        html.nav-completing body.nav-completing-done .nav-progress-bar {
+            width: 100%;
+        }
+        html.nav-completing body.nav-completing-done .nav-progress,
+        .nav-progress.nav-progress-hide {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .nav-progress-bar, body.nav-loading .container { transition: none; }
+        }
     </style>
+    <script>
+    (function(){ if(sessionStorage.getItem('nav-progress')){ document.documentElement.classList.add('nav-completing'); } })();
+    </script>
 </head>
 <body>
+    <div id="navProgress" class="nav-progress" aria-hidden="true"><div class="nav-progress-bar"></div></div>
     <div class="layout">
         {% if session.get('user_id') %}
         <nav class="nav">
             <a href="{{ url_for('main.dashboard') if session.get('current_area') else url_for('main.areas') }}" class="nav-title">LockerBeef</a>
             {% if session.get('current_area') %}
             <span class="nav-area" aria-label="Área actual">{{ session.get('current_area') }}</span>
-            {% if session.get('user_rol') == 'admin' %}
+            {% if session.get('user_rol') in ('superadmin', 'admin', 'coordinador') %}
+            <a href="{{ url_for('main.registro_form', modulo_id='ingreso-dotacion') }}" class="nav-link nav-link-registro">{{ module_icon('box-dotacion') }}<span>Ingreso dotación</span></a>
+            <a href="{{ url_for('main.registro_form', modulo_id='registro-personal') }}" class="nav-link nav-link-registro">{{ module_icon('users') }}<span>Registro personal</span></a>
+            <a href="{{ url_for('main.registro_form', modulo_id='ingreso-lockers') }}" class="nav-link nav-link-registro">{{ module_icon('box-arrow-in') }}<span>Ingreso lockers</span></a>
+            {% endif %}
+            {% if session.get('user_rol') in ('superadmin', 'admin') %}
             <a href="{{ url_for('main.areas') }}" class="nav-link nav-link-area">Cambiar área</a>
             {% endif %}
             {% endif %}
@@ -584,7 +647,8 @@
                 <span class="nav-user-wrap">
                     <span class="nav-user">{{ session.get('user_nombre', '') }}</span>
                     <span class="nav-role">
-                        {% if session.get('user_rol') == 'admin' %}Administrador
+                        {% if session.get('user_rol') == 'superadmin' %}Super Administrador
+                        {% elif session.get('user_rol') == 'admin' %}Administrador
                         {% elif session.get('user_rol') == 'coordinador' %}Coordinador
                         {% else %}Usuario{% endif %}
                     </span>
@@ -617,6 +681,40 @@
         }
         updateTimer();
         setInterval(updateTimer, 1000);
+    })();
+    </script>
+    <script>
+    (function() {
+        var navKey = 'nav-progress';
+        function isInternal(href) {
+            if (!href || href === '#' || href.indexOf('javascript:') === 0) return false;
+            try {
+                var u = new URL(href, location.origin);
+                return u.origin === location.origin && u.pathname !== location.pathname;
+            } catch (e) { return false; }
+        }
+        document.addEventListener('click', function(e) {
+            var a = e.target && (e.target.closest ? e.target.closest('a') : e.target);
+            if (!a || a.target === '_blank' || !isInternal(a.getAttribute('href'))) return;
+            e.preventDefault();
+            sessionStorage.setItem(navKey, '1');
+            document.body.classList.add('nav-loading');
+            setTimeout(function() { window.location.href = a.href; }, 120);
+        }, true);
+        if (sessionStorage.getItem(navKey)) {
+            document.body.classList.add('nav-completing-done');
+            requestAnimationFrame(function() {
+                requestAnimationFrame(function() {
+                    setTimeout(function() {
+                        document.body.classList.remove('nav-completing-done');
+                        document.documentElement.classList.remove('nav-completing');
+                        sessionStorage.removeItem(navKey);
+                        var prog = document.getElementById('navProgress');
+                        if (prog) { prog.classList.add('nav-progress-hide'); setTimeout(function() { prog.classList.remove('nav-progress-hide'); }, 250); }
+                    }, 320);
+                });
+            });
+        }
     })();
     </script>
     {% endif %}

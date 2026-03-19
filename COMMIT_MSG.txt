@@ -1,0 +1,61 @@
+Mejoras en Registro de Asignaciones, validaciones, dashboard y UX
+
+=== ID de asignaciones (ASG-000, ASG-001, ...) ===
+- Formato de id_asignaciones en 3 dígitos (ASG-000, ASG-001, ...).
+- Script database/actualizar_id_asignaciones_asg.py para actualizar registros
+  existentes según cantidad en el módulo (ejecutar una vez con el venv activo).
+
+=== Confirmación de eliminación ===
+- Sustituido confirm() del navegador por un modal en todos los módulos que
+  usan modulo.html: icono, título "Eliminar registro", texto de advertencia,
+  botones Cancelar y Eliminar; se cierra con Escape o clic en el fondo.
+
+=== Validación Código Dotación y Código Lockers ===
+- Al guardar en Registro de Asignaciones o Personal Registrado: se valida que
+  Cod. Dotación exista en Dotaciones Disponibles (Base de Dotaciones, estado
+  DISPONIBLE) y Cod. Lockers en Lockers Disponibles (estado disponible).
+  Si no están disponibles, se muestra error y no se guarda.
+- API GET /dashboard/api/verificar-codigos para consultar disponibilidad.
+- En el formulario se muestra "Disponible" (verde) o "No disponible. Por favor
+  asigne otro." (rojo) bajo cada campo, actualizado al salir del campo o al cambiar.
+- Campo Área en "Registro personal" (encabezado): solo lectura, tomando el
+  área actual del usuario; en backend se fuerza current_area al guardar.
+
+=== Área Lockers en Registro personal ===
+- Campo "Área Lockers" como select con 3 opciones: VESTIER HOMBRES,
+  VESTIER MUJERES, ADMINISTRATIVO (mismo estilo que otros selects).
+
+=== Asignación y liberación de códigos ===
+- Al asignar dotación/locker: en Base de Dotaciones el código pasa a ASIGNADA;
+  en Locker Disponibles y en Base de Lockers el código pasa a ASIGNADO.
+  Lockers Disponibles solo muestra registros con estado disponible.
+- Al eliminar un registro de asignación: se crea entrada en Historial de
+  Retiros con los datos del registro y fecha de retiro; los códigos de
+  dotación y locker vuelven a DISPONIBLE en sus tablas.
+- Al editar y cambiar o quitar un código, el anterior se libera.
+
+=== Código Dotación y Código Lockers como listas ===
+- En Personal Registrado, Registro de Asignaciones e Historial de Retiros los
+  campos se muestran como select con opciones: disponibles (asignación) o
+  todos los códigos (historial). Lockers filtrados por área actual.
+- Estilo .codigo-select: borde teal, gradiente, flecha y sombra en todos los módulos.
+
+=== Botón "Personal pendiente" ===
+- Rediseño: botón con gradiente ámbar, icono, badge con número; dropdown
+  con cabecera y tarjetas por persona con botón "Asignar" verde.
+- Visible solo en la vista general del módulo Registro de Asignaciones;
+  oculto al editar o al crear un registro.
+
+=== Dashboard en tiempo real ===
+- Nueva ruta GET /dashboard/api/stats que devuelve en JSON las mismas
+  estadísticas del panel (totales, disponibles, gráfico últimos 7 días).
+- El dashboard actualiza las 7 tarjetas y el gráfico cada 15 segundos
+  sin recargar la página; al volver a la pestaña se refresca y se reanuda el intervalo.
+- Lógica de estadísticas centralizada en _dashboard_stats(current_area).
+
+Archivos modificados:
+- app/routes/main.py: lógica de validación, asignación/liberación, API stats y verificar-codigos.
+- app/templates/modulo.html: modal eliminar, Personal pendiente, selects código, estilos.
+- app/templates/dashboard.html: data-stat en tarjetas, script de polling y actualización.
+- app/templates/registro_form.html: Área solo lectura, Área Lockers como select.
+- database/actualizar_id_asignaciones_asg.py: script de migración de IDs ASG.

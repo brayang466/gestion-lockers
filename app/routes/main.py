@@ -16,14 +16,27 @@ from app.models import (
 
 bp = Blueprint("main", __name__)
 
+DESPOSTE_AREAS = ("DESPOSTE", "DES", "CAL", "LYD", "SST", "MTTO", "LOG", "EXT", "TIC")
+
+
+def _is_desposte_context(area):
+    return ((area or "").strip().upper() == "DESPOSTE")
+
 
 def _normalize_estado_base_lockers(estado):
-    """En base_lockers, quita el prefijo 'LOCKERT' del campo estado y deja solo el estado real."""
+    """En base_lockers: quita prefijo LOCKERT; normaliza a DISPONIBLE, ASIGNADO o VISITA."""
     if not estado or not isinstance(estado, str):
-        return (estado or "disponible").strip()
+        return "DISPONIBLE"
     s = estado.strip()
     s = re.sub(r"^LOCKERT\s*", "", s, flags=re.IGNORECASE).strip()
-    return s if s else "disponible"
+    if not s:
+        return "DISPONIBLE"
+    u = s.upper()
+    if u in ("DISPONIBLE", "ASIGNADO", "VISITA"):
+        return u
+    if u == "ASIGNADA":
+        return "ASIGNADO"
+    return u
 
 
 def _normalize_estado_base_dotaciones(estado):
@@ -64,15 +77,19 @@ def _get_next_id_asignaciones():
     return "ASG-{:03d}".format(max_num + 1)
 
 
-def _codigo_dotacion_disponible(codigo):
-    """True si el código existe en Base de Dotaciones con estado DISPONIBLE (como en Dotaciones Disponibles)."""
+def _codigo_dotacion_disponible(codigo, area=None):
+    """True si el código existe en Base de Dotaciones con estado DISPONIBLE. Si area='DESPOSTE' solo busca en dotaciones DESPOSTE; si area es otra, excluye DESPOSTE."""
     if not (codigo or "").strip():
         return True
-    reg = BaseDotaciones.query.filter(
+    q = BaseDotaciones.query.filter(
         BaseDotaciones.codigo == (codigo or "").strip(),
         BaseDotaciones.estado.ilike("%disponible%"),
-    ).filter(~BaseDotaciones.estado.ilike("%asignada%")).first()
-    return reg is not None
+    ).filter(~BaseDotaciones.estado.ilike("%asignada%"))
+    if area == "DESPOSTE":
+        q = q.filter(BaseDotaciones.area_uso == "DESPOSTE")
+    elif area:
+        q = q.filter(BaseDotaciones.area_uso != "DESPOSTE")
+    return q.first() is not None
 
 
 def _codigo_locker_disponible(codigo):
@@ -87,16 +104,20 @@ def _codigo_locker_disponible(codigo):
     )
 
 
-def _marcar_dotacion_asignada(codigo):
-    """Marca la primera dotación disponible con ese código como ASIGNADA en BaseDotaciones."""
+def _marcar_dotacion_asignada(codigo, area=None):
+    """Marca la primera dotación disponible con ese código como ASIGNADA en BaseDotaciones. Si area='DESPOSTE' solo toca dotaciones DESPOSTE."""
     if not (codigo or "").strip():
         return
-    reg = (
+    q = (
         BaseDotaciones.query.filter(BaseDotaciones.codigo == (codigo or "").strip())
         .filter(BaseDotaciones.estado.ilike("%disponible%"))
         .filter(~BaseDotaciones.estado.ilike("%asignada%"))
-        .first()
     )
+    if area == "DESPOSTE":
+        q = q.filter(BaseDotaciones.area_uso == "DESPOSTE")
+    elif area:
+        q = q.filter(BaseDotaciones.area_uso != "DESPOSTE")
+    reg = q.first()
     if reg:
         reg.estado = "ASIGNADA"
 
@@ -115,21 +136,25 @@ def _marcar_locker_asignado(codigo, area=None):
         reg.estado = "ASIGNADO"
     q_base = BaseLockers.query.filter(BaseLockers.codigo == cod)
     if area:
-        q_base = q_base.filter(BaseLockers.area == area)
+        if (area or "").upper() == "DESPOSTE":
+            q_base = q_base.filter(db.func.upper(BaseLockers.area) == "DESPOSTE")
+        else:
+            q_base = q_base.filter(BaseLockers.area == area)
     reg_base = q_base.filter(db.func.lower(BaseLockers.estado) == "disponible").first()
     if reg_base:
         reg_base.estado = "ASIGNADO"
 
 
-def _liberar_dotacion(codigo):
-    """Vuelve a DISPONIBLE la dotación con ese código (estado ASIGNADA) en BaseDotaciones."""
+def _liberar_dotacion(codigo, area=None):
+    """Vuelve a DISPONIBLE la dotación con ese código en BaseDotaciones. Si area='DESPOSTE' solo toca dotaciones DESPOSTE."""
     if not (codigo or "").strip():
         return
-    reg = (
-        BaseDotaciones.query.filter(BaseDotaciones.codigo == (codigo or "").strip())
-        .filter(BaseDotaciones.estado.ilike("%asignada%"))
-        .first()
-    )
+    q = BaseDotaciones.query.filter(BaseDotaciones.codigo == (codigo or "").strip()).filter(BaseDotaciones.estado.ilike("%asignada%"))
+    if area == "DESPOSTE":
+        q = q.filter(BaseDotaciones.area_uso == "DESPOSTE")
+    elif area:
+        q = q.filter(BaseDotaciones.area_uso != "DESPOSTE")
+    reg = q.first()
     if reg:
         reg.estado = "DISPONIBLE"
 
@@ -144,7 +169,10 @@ def _liberar_locker(codigo, area=None):
         reg.estado = "disponible"
     q_base = BaseLockers.query.filter(BaseLockers.codigo == cod)
     if area:
-        q_base = q_base.filter(BaseLockers.area == area)
+        if (area or "").upper() == "DESPOSTE":
+            q_base = q_base.filter(db.func.upper(BaseLockers.area) == "DESPOSTE")
+        else:
+            q_base = q_base.filter(BaseLockers.area == area)
     for reg_base in q_base.filter(BaseLockers.estado.ilike("%asignado%")).all():
         reg_base.estado = "disponible"
 
@@ -173,6 +201,7 @@ MODULOS_CONFIG = {
         "columnas": [
             {"key": "codigo", "label": "Código"},
             {"key": "area", "label": "Área"},
+            {"key": "subarea", "label": "Subárea (ubic. Desposte)"},
             {"key": "area_lockers", "label": "Área Lockers"},
             {"key": "estado", "label": "Estado"},
             {"key": "unidad", "label": "Unidad"},
@@ -180,8 +209,9 @@ MODULOS_CONFIG = {
         "form_fields": [
             {"name": "codigo", "label": "Código", "type": "text", "required": True},
             {"name": "area", "label": "Área", "type": "text"},
+            {"name": "subarea", "label": "Subárea (ubic. Desposte)", "type": "text"},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
-            {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO"]},
+            {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO", "VISITA"]},
             {"name": "unidad", "label": "Unidad", "type": "text"},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
@@ -196,12 +226,14 @@ MODULOS_CONFIG = {
         "columnas": [
             {"key": "codigo", "label": "Código"},
             {"key": "area", "label": "Área"},
+            {"key": "subarea", "label": "Subárea (ubic. Desposte)"},
             {"key": "area_lockers", "label": "Área Lockers"},
             {"key": "estado", "label": "Estado"},
         ],
         "form_fields": [
             {"name": "codigo", "label": "Código", "type": "text", "required": True},
             {"name": "area", "label": "Área", "type": "text"},
+            {"name": "subarea", "label": "Subárea (ubic. Desposte)", "type": "text"},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
             {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO"]},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
@@ -710,11 +742,12 @@ def entrar_area(nombre):
 def api_verificar_codigos():
     """Devuelve si codigo_dotacion y codigo_lockets están disponibles (en Dotaciones/Lockers Disponibles) o asignados."""
     from flask import jsonify
+    current_area = (session.get("current_area") or "").strip()
     cod_dot = (request.args.get("codigo_dotacion") or "").strip()
     cod_lock = (request.args.get("codigo_lockets") or "").strip()
     out = {}
     if cod_dot:
-        out["codigo_dotacion"] = "disponible" if _codigo_dotacion_disponible(cod_dot) else "asignado"
+        out["codigo_dotacion"] = "disponible" if _codigo_dotacion_disponible(cod_dot, area=current_area) else "asignado"
     else:
         out["codigo_dotacion"] = None
     if cod_lock:
@@ -727,32 +760,52 @@ def api_verificar_codigos():
 def _dashboard_stats(current_area):
     """Calcula estadísticas del dashboard para un área. Usado por dashboard() y por api_dashboard_stats()."""
     from sqlalchemy import func
-    total_lockers = BaseLockers.query.filter(BaseLockers.area == current_area).count()
-    disponibles = BaseLockers.query.filter(
-        BaseLockers.area == current_area,
-        db.func.lower(BaseLockers.estado) == "disponible",
-    ).count()
-    total_dotaciones = BaseDotaciones.query.count()
-    dotaciones_disponibles = BaseDotaciones.query.filter(
-        db.func.lower(BaseDotaciones.estado) == "disponible",
-    ).count()
-    total_personal = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
-    total_asignaciones = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
-    total_retiros = HistorialRetiros.query.filter(HistorialRetiros.area == current_area).count()
+    # Lockers: solo DESPOSTE usa comparación insensible a mayúsculas (área independiente)
+    if (current_area or "").upper() == "DESPOSTE":
+        q_lockers = BaseLockers.query.filter(db.func.upper(BaseLockers.area) == "DESPOSTE")
+    else:
+        q_lockers = BaseLockers.query.filter(BaseLockers.area == current_area)
+    total_lockers = q_lockers.count()
+    disponibles = q_lockers.filter(db.func.lower(BaseLockers.estado) == "disponible").count()
+    q_dot = BaseDotaciones.query
+    if current_area == "DESPOSTE":
+        q_dot = q_dot.filter(BaseDotaciones.area_uso == "DESPOSTE")
+    else:
+        q_dot = q_dot.filter(BaseDotaciones.area_uso != "DESPOSTE")
+    total_dotaciones = q_dot.count()
+    dotaciones_disponibles = q_dot.filter(db.func.lower(BaseDotaciones.estado) == "disponible").count()
+    if _is_desposte_context(current_area):
+        total_personal = RegistroAsignaciones.query.filter(db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS)).count()
+        total_asignaciones = RegistroAsignaciones.query.filter(db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS)).count()
+        total_retiros = HistorialRetiros.query.filter(db.func.upper(HistorialRetiros.area).in_(DESPOSTE_AREAS)).count()
+    else:
+        total_personal = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
+        total_asignaciones = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
+        total_retiros = HistorialRetiros.query.filter(HistorialRetiros.area == current_area).count()
     today = datetime.utcnow().date()
     seven_days_ago = today - timedelta(days=6)
-    chart_by_date = dict(
-        db.session.query(
+    if _is_desposte_context(current_area):
+        chart_query = db.session.query(
             func.date(RegistroAsignaciones.creado_en).label("d"),
             func.count(RegistroAsignaciones.id).label("c"),
-        )
-        .filter(
-            RegistroAsignaciones.area == current_area,
+        ).filter(
+            db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS),
             func.date(RegistroAsignaciones.creado_en) >= seven_days_ago,
         )
-        .group_by(func.date(RegistroAsignaciones.creado_en))
-        .all()
-    )
+        chart_by_date = dict(chart_query.group_by(func.date(RegistroAsignaciones.creado_en)).all())
+    else:
+        chart_by_date = dict(
+            db.session.query(
+                func.date(RegistroAsignaciones.creado_en).label("d"),
+                func.count(RegistroAsignaciones.id).label("c"),
+            )
+            .filter(
+                RegistroAsignaciones.area == current_area,
+                func.date(RegistroAsignaciones.creado_en) >= seven_days_ago,
+            )
+            .group_by(func.date(RegistroAsignaciones.creado_en))
+            .all()
+        )
     dias_nombres = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
     chart_labels = []
     chart_data = []
@@ -814,6 +867,8 @@ def dashboard():
         "historial-retiros": "Operaciones",
     }
     unique_categories = sorted(set(MODULE_CATEGORIES.values()))
+    # Listado del sidebar: sin Ingreso de Lockers ni Ingreso de Dotación (acceso por botones del encabezado)
+    modulos_sidebar = {k: v for k, v in MODULOS_CONFIG.items() if k not in ("ingreso-lockers", "ingreso-dotacion")}
     return render_template(
         "dashboard.html",
         total_lockers=total_lockers,
@@ -823,7 +878,7 @@ def dashboard():
         total_personal=total_personal,
         total_asignaciones=total_asignaciones,
         total_retiros=total_retiros,
-        modulos_config=MODULOS_CONFIG,
+        modulos_config=modulos_sidebar,
         show_usuarios_module=es_superadmin,
         chart_labels=chart_labels,
         chart_data=chart_data,
@@ -970,10 +1025,10 @@ def _registro_form_view(modulo_id):
             cantidad = max(1, request.form.get("cantidad", type=int) or 1)
             if not codigo:
                 flash("El código es obligatorio.", "error")
-                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit)
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
             estado = _normalize_estado_base_lockers((request.form.get("estado") or "disponible").strip())
             for _ in range(cantidad):
-                obj = BaseLockers(codigo=codigo, area=area, area_lockers=area_lockers, estado=estado)
+                obj = BaseLockers(codigo=codigo, area=area, subarea="", area_lockers=area_lockers, estado=estado)
                 db.session.add(obj)
             db.session.commit()
             flash("Locker(s) registrado(s) en Base de Lockers.", "success")
@@ -983,7 +1038,7 @@ def _registro_form_view(modulo_id):
     if modulo_id == "registro-personal":
         return render_template("registro_form.html", modulo_id=modulo_id, titulo="Registro de Personal", form_fields=_FORM_REGISTRO_PERSONAL, can_edit=can_edit, estado_activo=True, default_area=current_area)
     if modulo_id == "ingreso-lockers":
-        return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit)
+        return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
     return None
 
 
@@ -1008,8 +1063,8 @@ _FORM_INGRESO_LOCKERS = [
     {"name": "codigo", "label": "Código", "type": "text", "required": True},
     {"name": "cantidad", "label": "Cantidad (lockers a agregar)", "type": "number"},
     {"name": "area", "label": "Área", "type": "text"},
-    {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
-    {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO"]},
+    {"name": "area_lockers", "label": "Área Lockers", "type": "select", "options": ["VESTIDOR HOMBRES", "VESTIDOR MUJERES", "ADMINISTRATIVOS"]},
+    {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO", "VISITA"]},
 ]
 
 
@@ -1038,14 +1093,18 @@ def modulo(modulo_id):
         return redirect(url_for("main.registro_form", modulo_id=modulo_id))
     config = MODULOS_CONFIG[modulo_id]
     Model = config["model"]
-    columnas = config["columnas"]
-    form_fields = config["form_fields"]
+    current_area = (session.get("current_area") or "").strip()
+    columnas = list(config["columnas"])
+    form_fields = list(config["form_fields"])
+    # Subárea solo en DESPOSTE (Base de Lockers y Locker Disponibles)
+    if modulo_id in ("base-lockers", "locker-disponibles") and (current_area or "").upper() != "DESPOSTE":
+        columnas = [c for c in columnas if c.get("key") != "subarea"]
+        form_fields = [f for f in form_fields if f.get("name") != "subarea"]
     date_fields = config.get("date_fields") or []
     titulo = config["titulo"]
     area_key = config.get("area_key")
     user_rol = (session.get("user_rol") or "usuario").strip().lower()
     user_area = (session.get("user_area") or "").strip()
-    current_area = (session.get("current_area") or "").strip()
     can_edit = _user_can_edit()
 
     if request.method == "GET" and config.get("no_crear") and request.args.get("crear"):
@@ -1085,7 +1144,7 @@ def modulo(modulo_id):
                     db.session.add(hist)
                     reg_area = (getattr(obj, "area", None) or "").strip()
                     if cod_dot:
-                        _liberar_dotacion(cod_dot)
+                        _liberar_dotacion(cod_dot, area=reg_area)
                     if cod_lock:
                         _liberar_locker(cod_lock, area=reg_area)
                 db.session.delete(obj)
@@ -1131,7 +1190,8 @@ def modulo(modulo_id):
             if Model == RegistroAsignaciones:
                 cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
                 cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
-                if cod_dot and not _codigo_dotacion_disponible(cod_dot):
+                reg_area = (getattr(obj, "area", None) or "").strip() or current_area
+                if cod_dot and not _codigo_dotacion_disponible(cod_dot, area=reg_area):
                     flash("El Código de dotación no está disponible (ya asignado o no existe en Dotaciones Disponibles). Por favor asigne otro.", "error")
                     session["modulo_edit_form"] = {modulo_id: dict(request.form)}
                     return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
@@ -1140,13 +1200,12 @@ def modulo(modulo_id):
                     session["modulo_edit_form"] = {modulo_id: dict(request.form)}
                     return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
                 # Liberar códigos que ya no se usan y marcar los nuevos como asignados
-                reg_area = (getattr(obj, "area", None) or "").strip() or current_area
                 if old_cod_dot and old_cod_dot != cod_dot:
-                    _liberar_dotacion(old_cod_dot)
+                    _liberar_dotacion(old_cod_dot, area=reg_area)
                 if old_cod_lock and old_cod_lock != cod_lock:
                     _liberar_locker(old_cod_lock, area=reg_area)
                 if cod_dot:
-                    _marcar_dotacion_asignada(cod_dot)
+                    _marcar_dotacion_asignada(cod_dot, area=reg_area)
                 if cod_lock:
                     _marcar_locker_asignado(cod_lock, area=reg_area)
             db.session.commit()
@@ -1192,7 +1251,7 @@ def modulo(modulo_id):
         if Model == RegistroAsignaciones:
             cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
             cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
-            if cod_dot and not _codigo_dotacion_disponible(cod_dot):
+            if cod_dot and not _codigo_dotacion_disponible(cod_dot, area=current_area):
                 flash("El Código de dotación no está disponible (ya asignado o no existe en Dotaciones Disponibles). Por favor asigne otro.", "error")
                 session["modulo_crear_form"] = {modulo_id: dict(request.form)}
                 return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
@@ -1201,7 +1260,7 @@ def modulo(modulo_id):
                 session["modulo_crear_form"] = {modulo_id: dict(request.form)}
                 return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
             if cod_dot:
-                _marcar_dotacion_asignada(cod_dot)
+                _marcar_dotacion_asignada(cod_dot, area=current_area)
             if cod_lock:
                 _marcar_locker_asignado(cod_lock, area=current_area)
         db.session.add(obj)
@@ -1214,8 +1273,19 @@ def modulo(modulo_id):
     query = Model.query
     if area_key and current_area and hasattr(Model, area_key):
         if Model == BaseDotaciones and area_key == "area_uso":
-            # Base dotaciones: mostrar todos los registros de la tabla (sin filtrar por área)
-            pass
+            # Base dotaciones: DESPOSTE solo ve sus datos; las demás áreas ven todo excepto DESPOSTE
+            if current_area.upper() == "DESPOSTE":
+                query = query.filter(BaseDotaciones.area_uso == "DESPOSTE")
+            else:
+                query = query.filter(BaseDotaciones.area_uso != "DESPOSTE")
+        elif (Model == BaseLockers or Model == LockerDisponibles) and (current_area or "").upper() == "DESPOSTE":
+            # Solo DESPOSTE: comparación insensible a mayúsculas (área independiente)
+            attr = getattr(Model, area_key)
+            query = query.filter(db.func.upper(attr) == "DESPOSTE")
+        elif (Model == RegistroAsignaciones or Model == HistorialRetiros) and _is_desposte_context(current_area):
+            # En DESPOSTE, incluir registros de subáreas (CAL, LYD, LOG, etc.) y DES.
+            attr = getattr(Model, area_key)
+            query = query.filter(db.func.upper(attr).in_(DESPOSTE_AREAS))
         else:
             query = query.filter(getattr(Model, area_key) == current_area)
     # Personal Registrado: solo RegistroAsignaciones sin locker ni dotación asignados
@@ -1287,6 +1357,16 @@ def modulo(modulo_id):
             if col["key"] == "id_asignaciones" and Model == RegistroAsignaciones:
                 if not (val or "").strip():
                     val = "ASG-{:03d}".format(row.id)
+            if col["key"] == "subarea" and (Model == BaseLockers or Model == LockerDisponibles):
+                area_val = (getattr(row, "area", None) or "") or ""
+                sub_val = (val or "") or ""
+                val = "{} (ubic. Desposte)".format(sub_val) if (area_val == "DESPOSTE" and sub_val) else sub_val
+            if col["key"] == "area" and (Model == RegistroAsignaciones or Model == HistorialRetiros) and _is_desposte_context(current_area):
+                area_val = (val or "").strip().upper()
+                if area_val and area_val not in ("DES", "DESPOSTE"):
+                    val = "{} (ubic. Desposte)".format(area_val)
+                elif area_val == "DESPOSTE":
+                    val = "DES"
             if col["key"] == "estado" and Model == BaseDotaciones and val:
                 val = _normalize_estado_base_dotaciones(val)
             if col["key"] == "estado" and Model == RegistroAsignaciones:
@@ -1305,9 +1385,13 @@ def modulo(modulo_id):
     pendientes_sin_asignar = []
     pendientes_count = 0
     if modulo_id == "registro-asignaciones" and current_area:
+        q_pend = RegistroAsignaciones.query
+        if _is_desposte_context(current_area):
+            q_pend = q_pend.filter(db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS))
+        else:
+            q_pend = q_pend.filter(RegistroAsignaciones.area == current_area)
         pendientes_sin_asignar = (
-            RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area)
-            .filter(
+            q_pend.filter(
                 or_(
                     RegistroAsignaciones.codigo_lockets.is_(None),
                     RegistroAsignaciones.codigo_lockets == "",
@@ -1363,12 +1447,17 @@ def modulo(modulo_id):
     opciones_dotacion = []
     opciones_locker = []
     if "codigo_dotacion" in form_field_names:
+        q_dot = BaseDotaciones.query
+        if current_area == "DESPOSTE":
+            q_dot = q_dot.filter(BaseDotaciones.area_uso == "DESPOSTE")
+        elif current_area:
+            q_dot = q_dot.filter(BaseDotaciones.area_uso != "DESPOSTE")
         if modulo_id == "historial-retiros":
-            opciones_dotacion = [r[0] for r in BaseDotaciones.query.with_entities(BaseDotaciones.codigo).distinct().order_by(BaseDotaciones.codigo).all() if r[0]]
+            opciones_dotacion = [r[0] for r in q_dot.with_entities(BaseDotaciones.codigo).distinct().order_by(BaseDotaciones.codigo).all() if r[0]]
         else:
             opciones_dotacion = [
                 r[0] for r in
-                BaseDotaciones.query.filter(BaseDotaciones.estado.ilike("%disponible%"))
+                q_dot.filter(BaseDotaciones.estado.ilike("%disponible%"))
                 .filter(~BaseDotaciones.estado.ilike("%asignada%"))
                 .with_entities(BaseDotaciones.codigo)
                 .distinct()
@@ -1381,7 +1470,10 @@ def modulo(modulo_id):
         if modulo_id != "historial-retiros":
             q = q.filter(db.func.lower(LockerDisponibles.estado) == "disponible")
         if current_area:
-            q = q.filter(LockerDisponibles.area == current_area)
+            if (current_area or "").upper() == "DESPOSTE":
+                q = q.filter(db.func.upper(LockerDisponibles.area) == "DESPOSTE")
+            else:
+                q = q.filter(LockerDisponibles.area == current_area)
         opciones_locker = [r[0] for r in q.with_entities(LockerDisponibles.codigo).order_by(LockerDisponibles.codigo).all()]
     return render_template(
         "modulo.html",

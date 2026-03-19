@@ -4,16 +4,16 @@ import StatCard from './StatCard'
 import ModuleGrid from './ModuleGrid'
 
 const MODULES = [
-  { title: 'Base de Lockers', desc: 'Listado y estado de lockers', href: '#', icon: '📦' },
-  { title: 'Locker Disponibles', desc: 'Disponibles para asignar', href: '#', icon: '🔓' },
-  { title: 'Base de Dotaciones', desc: 'Catálogo de dotaciones', href: '#', icon: '📋' },
   { title: 'Dotaciones Disponibles', desc: 'Stock por código y talla', href: '#', icon: '✅' },
-  { title: 'Registro de Personal', desc: 'Alta y listado de personal', href: '#', icon: '👤' },
-  { title: 'Personal Presupuestado', desc: 'Por área, aprobados y contratados', href: '#', icon: '📊' },
-  { title: 'Registro de Asignaciones', desc: 'Asignar locker o dotación', href: '#', icon: '🔗' },
+  { title: 'Locker Disponibles', desc: 'Disponibles para asignar', href: '#', icon: '🔓' },
   { title: 'Historial de Retiros', desc: 'Retiros y devoluciones', href: '#', icon: '📤' },
   { title: 'Ingreso de Lockers', desc: 'Registrar nuevos lockers', href: '#', icon: '➕' },
   { title: 'Ingreso de Dotación', desc: 'Registrar nuevas dotaciones', href: '#', icon: '📥' },
+  { title: 'Base de Lockers', desc: 'Listado y estado de lockers', href: '#', icon: '📦' },
+  { title: 'Base de Dotaciones', desc: 'Catálogo de dotaciones', href: '#', icon: '📋' },
+  { title: 'Registro de Personal', desc: 'Alta y listado de personal', href: '#', icon: '👤' },
+  { title: 'Personal Presupuestado', desc: 'Por área, aprobados y contratados', href: '#', icon: '📊' },
+  { title: 'Registro de Asignaciones', desc: 'Asignar locker o dotación', href: '#', icon: '🔗' },
 ]
 
 export default function Dashboard({ stats }) {

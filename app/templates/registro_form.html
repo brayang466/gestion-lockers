@@ -43,9 +43,9 @@
         <input type="{{ f.type }}" id="f_{{ f.name }}" name="{{ f.name }}"
                {% if f.type == 'number' %}value="1"{% endif %}
                {% if f.name == 'area' and default_area is defined %}value="{{ default_area or '' }}"{% endif %}
-               {% if modulo_id == 'registro-personal' and f.name == 'area' %}readonly{% endif %}
+               {% if (modulo_id == 'registro-personal' or modulo_id == 'ingreso-lockers') and f.name == 'area' %}readonly{% endif %}
                {% if f.get('required') %}required{% endif %}
-               class="form-input{% if modulo_id == 'registro-personal' and f.name == 'area' %} input-readonly{% endif %}">
+               class="form-input{% if (modulo_id == 'registro-personal' or modulo_id == 'ingreso-lockers') and f.name == 'area' %} input-readonly{% endif %}">
         {% endif %}
       </div>
       {% endfor %}

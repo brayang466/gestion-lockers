@@ -7,6 +7,7 @@ class BaseLockers(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(50), nullable=False)  # Codigo de Lockets
     area = db.Column(db.String(100), default="")
+    subarea = db.Column(db.String(30), default="")  # DES, CAL, LYD, LOG, etc. (ubicación en Desposte)
     area_lockers = db.Column(db.String(100), default="")
     estado = db.Column(db.String(40), default="disponible")
     unidad = db.Column(db.String(30), default="")
