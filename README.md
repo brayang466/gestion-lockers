@@ -5,7 +5,7 @@ Flask + MySQL (XAMPP / MySQL Workbench). Tablas alineadas con tus hojas (REGISTR
 ## Instalación
 
 1. `.venv\Scripts\activate` y `pip install -r requirements.txt`
-2. MySQL encendido. En Workbench: **database/crear_bd.sql**. Si ya tenías la BD, ejecuta además **database/migrar_cabeceras.sql** para añadir columnas de tus cabeceras.
+2. MySQL encendido (XAMPP u otro). **Recomendado (esquema actual):** en Workbench ejecuta **database/00_crear_base_vacia.sql** y luego `python -c "from app import create_app; create_app()"` para crear tablas con los modelos. Guía completa: **docs/RECUPERAR_BD_XAMPP_WORKBENCH.md**. El archivo **database/crear_bd.sql** es un esquema antiguo; solo úsalo si mantienes un flujo legacy y luego **database/migrar_cabeceras.sql**.
 3. Configurar el archivo `.env` en la raíz del proyecto (MYSQL_* y, si quieres recuperación de contraseña por correo, MAIL_*). Ver **docs/RECUPERACION_CONTRASENA.md** para el correo.
 4. Crear admin: `python scripts/crear_admin.py`
 

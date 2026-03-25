@@ -17,10 +17,77 @@ from app.models import (
 bp = Blueprint("main", __name__)
 
 DESPOSTE_AREAS = ("DESPOSTE", "DES", "CAL", "LYD", "SST", "MTTO", "LOG", "EXT", "TIC")
+_DESPOSTE_CODES_UPPER = frozenset((a or "").upper() for a in DESPOSTE_AREAS)
+# Códigos de subárea en planta Desposte (DES, LYD, CAL, …) — sin la palabra DESPOSTE como “subárea”
+_DESPOSTE_SUBAREA_CODES = frozenset(x for x in _DESPOSTE_CODES_UPPER if x != "DESPOSTE")
 
 
 def _is_desposte_context(area):
     return ((area or "").strip().upper() == "DESPOSTE")
+
+
+def _lockers_por_sesion_filter(Model, current_area):
+    """Lockers: sesión DESPOSTE = solo planta (area=DESPOSTE), independiente de otras áreas generales.
+
+    Sesión LYD/CAL/… (código de subárea): unión de (1) lockers con area=DESPOSTE y subárea = sesión
+    y (2) lockers con area = código de sesión (área general), sin mezclar otras subáreas."""
+    from sqlalchemy import and_, or_
+
+    ca_u = (current_area or "").strip().upper()
+    if not ca_u:
+        return None
+    a = getattr(Model, "area")
+    sub = getattr(Model, "subarea", None)
+    if ca_u == "DESPOSTE":
+        return db.func.upper(db.func.trim(a)) == "DESPOSTE"
+    if sub is not None and ca_u in _DESPOSTE_SUBAREA_CODES:
+        return or_(
+            and_(
+                db.func.upper(db.func.trim(a)) == "DESPOSTE",
+                db.func.upper(db.func.trim(sub)) == ca_u,
+            ),
+            db.func.upper(db.func.trim(a)) == ca_u,
+        )
+    return getattr(Model, "area") == current_area
+
+
+def _registro_area_scope_filter(Model, current_area):
+    """Filtra registro/historial por área de sesión, sin cruzar Desposte con otras áreas generales.
+
+    - Sesión DESPOSTE: solo filas cuyo campo `area` está en el ecosistema Desposte (subáreas + DESPOSTE).
+      No se enlaza por locker ni se mezclan áreas ajenas (BENEFICIO, PCC, …).
+    - Sesión LYD/CAL/… (subárea): unión de registro “general” (mismo código en area/area_lockers)
+      y asignaciones ligadas a locker en planta Desposte con esa misma subárea (no CAL≠LYD).
+    - Otras áreas (BENEFICIO, CALIDAD, LOGISTICA, …): solo igualdad en `area`."""
+    from sqlalchemy import or_, exists, select
+
+    ca = (current_area or "").strip().upper()
+    if not ca:
+        return None
+    ac = getattr(Model, "area")
+    if _is_desposte_context(current_area):
+        return db.func.upper(db.func.trim(ac)).in_(DESPOSTE_AREAS)
+
+    tu = db.func.upper(db.func.trim(ac))
+    cond = tu == ca
+
+    if ca in _DESPOSTE_SUBAREA_CODES:
+        lk = getattr(Model, "area_lockers", None)
+        if lk is not None:
+            cond = or_(cond, db.func.upper(db.func.trim(lk)) == ca)
+        if hasattr(Model, "codigo_lockets"):
+            cod_col = getattr(Model, "codigo_lockets")
+            locker_sub = exists(
+                select(1).where(
+                    BaseLockers.codigo == cod_col,
+                    db.func.upper(db.func.trim(BaseLockers.area)) == "DESPOSTE",
+                    db.func.upper(db.func.trim(BaseLockers.subarea)) == ca,
+                )
+            )
+            cond = or_(cond, locker_sub)
+        return cond
+
+    return tu == ca
 
 
 def _normalize_estado_base_lockers(estado):
@@ -136,10 +203,9 @@ def _marcar_locker_asignado(codigo, area=None):
         reg.estado = "ASIGNADO"
     q_base = BaseLockers.query.filter(BaseLockers.codigo == cod)
     if area:
-        if (area or "").upper() == "DESPOSTE":
-            q_base = q_base.filter(db.func.upper(BaseLockers.area) == "DESPOSTE")
-        else:
-            q_base = q_base.filter(BaseLockers.area == area)
+        lf = _lockers_por_sesion_filter(BaseLockers, area)
+        if lf is not None:
+            q_base = q_base.filter(lf)
     reg_base = q_base.filter(db.func.lower(BaseLockers.estado) == "disponible").first()
     if reg_base:
         reg_base.estado = "ASIGNADO"
@@ -169,10 +235,9 @@ def _liberar_locker(codigo, area=None):
         reg.estado = "disponible"
     q_base = BaseLockers.query.filter(BaseLockers.codigo == cod)
     if area:
-        if (area or "").upper() == "DESPOSTE":
-            q_base = q_base.filter(db.func.upper(BaseLockers.area) == "DESPOSTE")
-        else:
-            q_base = q_base.filter(BaseLockers.area == area)
+        lf = _lockers_por_sesion_filter(BaseLockers, area)
+        if lf is not None:
+            q_base = q_base.filter(lf)
     for reg_base in q_base.filter(BaseLockers.estado.ilike("%asignado%")).all():
         reg_base.estado = "disponible"
 
@@ -759,12 +824,9 @@ def api_verificar_codigos():
 
 def _dashboard_stats(current_area):
     """Calcula estadísticas del dashboard para un área. Usado por dashboard() y por api_dashboard_stats()."""
-    from sqlalchemy import func
-    # Lockers: solo DESPOSTE usa comparación insensible a mayúsculas (área independiente)
-    if (current_area or "").upper() == "DESPOSTE":
-        q_lockers = BaseLockers.query.filter(db.func.upper(BaseLockers.area) == "DESPOSTE")
-    else:
-        q_lockers = BaseLockers.query.filter(BaseLockers.area == current_area)
+    from sqlalchemy import func, or_, and_, false
+    lf = _lockers_por_sesion_filter(BaseLockers, current_area)
+    q_lockers = BaseLockers.query.filter(lf) if lf is not None else BaseLockers.query.filter(false())
     total_lockers = q_lockers.count()
     disponibles = q_lockers.filter(db.func.lower(BaseLockers.estado) == "disponible").count()
     q_dot = BaseDotaciones.query
@@ -774,14 +836,29 @@ def _dashboard_stats(current_area):
         q_dot = q_dot.filter(BaseDotaciones.area_uso != "DESPOSTE")
     total_dotaciones = q_dot.count()
     dotaciones_disponibles = q_dot.filter(db.func.lower(BaseDotaciones.estado) == "disponible").count()
+    sin_asig = and_(
+        or_(RegistroAsignaciones.codigo_lockets.is_(None), RegistroAsignaciones.codigo_lockets == ""),
+        or_(RegistroAsignaciones.codigo_dotacion.is_(None), RegistroAsignaciones.codigo_dotacion == ""),
+    )
+    con_asig = or_(
+        and_(RegistroAsignaciones.codigo_lockets.isnot(None), RegistroAsignaciones.codigo_lockets != ""),
+        and_(RegistroAsignaciones.codigo_dotacion.isnot(None), RegistroAsignaciones.codigo_dotacion != ""),
+    )
     if _is_desposte_context(current_area):
-        total_personal = RegistroAsignaciones.query.filter(db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS)).count()
-        total_asignaciones = RegistroAsignaciones.query.filter(db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS)).count()
+        desposte_areas = db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS)
+        total_personal = RegistroAsignaciones.query.filter(desposte_areas, sin_asig).count()
+        total_asignaciones = RegistroAsignaciones.query.filter(desposte_areas, con_asig).count()
         total_retiros = HistorialRetiros.query.filter(db.func.upper(HistorialRetiros.area).in_(DESPOSTE_AREAS)).count()
     else:
-        total_personal = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
-        total_asignaciones = RegistroAsignaciones.query.filter(RegistroAsignaciones.area == current_area).count()
-        total_retiros = HistorialRetiros.query.filter(HistorialRetiros.area == current_area).count()
+        scope_ra = _registro_area_scope_filter(RegistroAsignaciones, current_area)
+        scope_hr = _registro_area_scope_filter(HistorialRetiros, current_area)
+        total_personal = (
+            RegistroAsignaciones.query.filter(scope_ra, sin_asig).count() if scope_ra is not None else 0
+        )
+        total_asignaciones = (
+            RegistroAsignaciones.query.filter(scope_ra, con_asig).count() if scope_ra is not None else 0
+        )
+        total_retiros = HistorialRetiros.query.filter(scope_hr).count() if scope_hr is not None else 0
     today = datetime.utcnow().date()
     seven_days_ago = today - timedelta(days=6)
     if _is_desposte_context(current_area):
@@ -794,18 +871,22 @@ def _dashboard_stats(current_area):
         )
         chart_by_date = dict(chart_query.group_by(func.date(RegistroAsignaciones.creado_en)).all())
     else:
-        chart_by_date = dict(
-            db.session.query(
-                func.date(RegistroAsignaciones.creado_en).label("d"),
-                func.count(RegistroAsignaciones.id).label("c"),
+        scope_chart = _registro_area_scope_filter(RegistroAsignaciones, current_area)
+        if scope_chart is None:
+            chart_by_date = {}
+        else:
+            chart_by_date = dict(
+                db.session.query(
+                    func.date(RegistroAsignaciones.creado_en).label("d"),
+                    func.count(RegistroAsignaciones.id).label("c"),
+                )
+                .filter(
+                    scope_chart,
+                    func.date(RegistroAsignaciones.creado_en) >= seven_days_ago,
+                )
+                .group_by(func.date(RegistroAsignaciones.creado_en))
+                .all()
             )
-            .filter(
-                RegistroAsignaciones.area == current_area,
-                func.date(RegistroAsignaciones.creado_en) >= seven_days_ago,
-            )
-            .group_by(func.date(RegistroAsignaciones.creado_en))
-            .all()
-        )
     dias_nombres = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
     chart_labels = []
     chart_data = []
@@ -1096,8 +1177,13 @@ def modulo(modulo_id):
     current_area = (session.get("current_area") or "").strip()
     columnas = list(config["columnas"])
     form_fields = list(config["form_fields"])
-    # Subárea solo en DESPOSTE (Base de Lockers y Locker Disponibles)
-    if modulo_id in ("base-lockers", "locker-disponibles") and (current_area or "").upper() != "DESPOSTE":
+    # Subárea: visible en DESPOSTE y en subáreas Desposte (LYD, CAL, …); oculta en BENEFICIO, PCC, etc.
+    _ca_mod = (current_area or "").strip().upper()
+    if (
+        modulo_id in ("base-lockers", "locker-disponibles")
+        and _ca_mod != "DESPOSTE"
+        and _ca_mod not in _DESPOSTE_CODES_UPPER
+    ):
         columnas = [c for c in columnas if c.get("key") != "subarea"]
         form_fields = [f for f in form_fields if f.get("name") != "subarea"]
     date_fields = config.get("date_fields") or []
@@ -1226,9 +1312,18 @@ def modulo(modulo_id):
                 setattr(obj, name, int(val) if val != "" and val is not None else None)
             else:
                 setattr(obj, name, (val or "").strip() if val is not None else "")
-        # Asignar área actual en módulos con area_key
+        # Asignar área actual en módulos con area_key (Desposte: subáreas LYD/CAL/… → area=DESPOSTE + subarea)
         if area_key and current_area and hasattr(obj, area_key):
-            setattr(obj, area_key, current_area)
+            if Model in (BaseLockers, LockerDisponibles):
+                ca_u = (current_area or "").strip().upper()
+                if ca_u in _DESPOSTE_SUBAREA_CODES:
+                    obj.area = "DESPOSTE"
+                    if hasattr(obj, "subarea"):
+                        obj.subarea = ca_u
+                else:
+                    setattr(obj, area_key, current_area)
+            else:
+                setattr(obj, area_key, current_area)
         # Asegurar fechas obligatorias y ID ASG-XX
         if Model == RegistroAsignaciones:
             if getattr(obj, "fecha_asignacion", None) is None:
@@ -1269,7 +1364,7 @@ def modulo(modulo_id):
         return redirect(url_for("main.modulo", modulo_id=modulo_id))
 
     # GET: listar con paginación filtrada por área actual y búsqueda
-    from sqlalchemy import or_, and_
+    from sqlalchemy import or_, and_, false
     query = Model.query
     if area_key and current_area and hasattr(Model, area_key):
         if Model == BaseDotaciones and area_key == "area_uso":
@@ -1278,14 +1373,20 @@ def modulo(modulo_id):
                 query = query.filter(BaseDotaciones.area_uso == "DESPOSTE")
             else:
                 query = query.filter(BaseDotaciones.area_uso != "DESPOSTE")
-        elif (Model == BaseLockers or Model == LockerDisponibles) and (current_area or "").upper() == "DESPOSTE":
-            # Solo DESPOSTE: comparación insensible a mayúsculas (área independiente)
-            attr = getattr(Model, area_key)
-            query = query.filter(db.func.upper(attr) == "DESPOSTE")
-        elif (Model == RegistroAsignaciones or Model == HistorialRetiros) and _is_desposte_context(current_area):
-            # En DESPOSTE, incluir registros de subáreas (CAL, LYD, LOG, etc.) y DES.
-            attr = getattr(Model, area_key)
-            query = query.filter(db.func.upper(attr).in_(DESPOSTE_AREAS))
+        elif Model == BaseLockers or Model == LockerDisponibles:
+            lf = _lockers_por_sesion_filter(Model, current_area)
+            if lf is not None:
+                query = query.filter(lf)
+            else:
+                query = query.filter(false())
+        elif Model == RegistroAsignaciones or Model == HistorialRetiros:
+            if _is_desposte_context(current_area):
+                attr = getattr(Model, area_key)
+                query = query.filter(db.func.upper(attr).in_(DESPOSTE_AREAS))
+            else:
+                scope = _registro_area_scope_filter(Model, current_area)
+                if scope is not None:
+                    query = query.filter(scope)
         else:
             query = query.filter(getattr(Model, area_key) == current_area)
     # Personal Registrado: solo RegistroAsignaciones sin locker ni dotación asignados
@@ -1330,14 +1431,26 @@ def modulo(modulo_id):
     total_pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     page = min(page, total_pages)
     from sqlalchemy import text
-    if Model == BaseDotaciones:
-        # Orden: primero códigos numéricos (001, 002, ...), luego los que inician con letra
+
+    # Orden general de módulos por código (menor -> mayor) cuando exista un campo de código.
+    # Si no hay código aplicable, mantiene orden por id descendente.
+    code_order_fields = ("codigo", "id_asignaciones", "codigo_dotacion", "codigo_lockets")
+    order_by_code = None
+    for field_name in code_order_fields:
+        if hasattr(Model, field_name):
+            col = getattr(Model, field_name)
+            order_by_code = [
+                text(f"(CASE WHEN {field_name} IS NULL OR {field_name} = '' THEN 1 ELSE 0 END)"),
+                text(f"({field_name} REGEXP '^[0-9]+$') DESC"),
+                text(f"(CASE WHEN {field_name} REGEXP '^[0-9]+$' THEN CAST({field_name} AS UNSIGNED) ELSE 999999 END)"),
+                col.asc(),
+                Model.id.asc(),
+            ]
+            break
+
+    if order_by_code:
         rows = (
-            query.order_by(
-                text("(codigo REGEXP '^[0-9]+$') DESC"),
-                text("(CASE WHEN codigo REGEXP '^[0-9]+$' THEN CAST(codigo AS UNSIGNED) ELSE 999999 END)"),
-                BaseDotaciones.codigo,
-            )
+            query.order_by(*order_by_code)
             .limit(PER_PAGE)
             .offset((page - 1) * PER_PAGE)
             .all()
@@ -1389,7 +1502,9 @@ def modulo(modulo_id):
         if _is_desposte_context(current_area):
             q_pend = q_pend.filter(db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS))
         else:
-            q_pend = q_pend.filter(RegistroAsignaciones.area == current_area)
+            sc = _registro_area_scope_filter(RegistroAsignaciones, current_area)
+            if sc is not None:
+                q_pend = q_pend.filter(sc)
         pendientes_sin_asignar = (
             q_pend.filter(
                 or_(
@@ -1470,10 +1585,9 @@ def modulo(modulo_id):
         if modulo_id != "historial-retiros":
             q = q.filter(db.func.lower(LockerDisponibles.estado) == "disponible")
         if current_area:
-            if (current_area or "").upper() == "DESPOSTE":
-                q = q.filter(db.func.upper(LockerDisponibles.area) == "DESPOSTE")
-            else:
-                q = q.filter(LockerDisponibles.area == current_area)
+            lf = _lockers_por_sesion_filter(LockerDisponibles, current_area)
+            if lf is not None:
+                q = q.filter(lf)
         opciones_locker = [r[0] for r in q.with_entities(LockerDisponibles.codigo).order_by(LockerDisponibles.codigo).all()]
     return render_template(
         "modulo.html",

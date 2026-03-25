@@ -121,6 +121,13 @@ def import_registro_asignaciones(r, rep, app):
                 if opt == "date":
                     v = parse_fecha(v) if v else None
                 data[attr] = v
+            # Fila vacía (solo separadores en Excel): no importar
+            if not any(
+                (data.get(k) or "").strip()
+                for k in ("operario", "identificacion", "codigo_lockets", "codigo_dotacion", "area")
+            ):
+                skip += 1
+                continue
             if data.get("fecha_entrega"):
                 data["fecha_asignacion"] = data["fecha_entrega"]
             else:

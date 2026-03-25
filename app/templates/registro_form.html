@@ -59,36 +59,4 @@
   <p class="hint">No tiene permiso para registrar.</p>
   {% endif %}
 </div>
-<style>
-  .registro-form-page { max-width: 520px; }
-  .registro-form-page .hint { color: var(--gris-muted, #64748b); margin-bottom: 1rem; }
-  .badge-activo { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 6px; font-size: 0.85rem; font-weight: 600; background: #d1fae5; color: #047857; }
-  .registro-form-page .form-input { width: 100%; padding: 0.5rem 0.75rem; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1rem; }
-  .registro-form-page .form-input.input-readonly { background: #f1f5f9; color: #475569; cursor: not-allowed; }
-  .registro-form-page .form-group { margin-bottom: 1rem; }
-  .registro-form-page .form-actions { margin-top: 1.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
-  /* Select estado: mismo diseño oval que en módulos */
-  .registro-form-page .estado-select {
-    max-width: 280px;
-    padding: 0.6rem 1.2rem;
-    border-radius: 9999px;
-    font-size: 1rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    border: 2px solid var(--verde, #15803d);
-    background: linear-gradient(180deg, #fff 0%, #f0fdf4 100%);
-    color: var(--gris-texto, #1e293b);
-    cursor: pointer;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2315803d'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 1.25rem;
-    padding-right: 2.5rem;
-    box-shadow: 0 2px 10px rgba(21, 128, 61, 0.15);
-    transition: box-shadow 0.2s;
-  }
-  .registro-form-page .estado-select:hover { box-shadow: 0 4px 16px rgba(21, 128, 61, 0.25); }
-  .registro-form-page .estado-select:focus { outline: none; box-shadow: 0 0 0 3px rgba(21, 128, 61, 0.3); }
-</style>
 {% endblock %}

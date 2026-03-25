@@ -1,155 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Seleccionar área — LockerBeef{% endblock %}
 {% block content %}
-<style>
-.areas-page {
-    min-height: 80vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem 1rem;
-    background: linear-gradient(160deg, #f0fdf4 0%, #f8fafc 40%, #ecfdf5 100%);
-    animation: areaPageEnter 0.4s ease-out forwards;
-}
-@keyframes areaPageEnter {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.areas-page h1 {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--gris-texto);
-    margin-bottom: 0.5rem;
-    text-align: center;
-    animation: areaTitleEnter 0.45s ease-out forwards;
-}
-.areas-page .sub {
-    font-size: 1rem;
-    color: var(--gris-muted);
-    margin-bottom: 2rem;
-    text-align: center;
-    max-width: 480px;
-    animation: areaTitleEnter 0.45s ease-out 0.08s backwards;
-}
-@keyframes areaTitleEnter {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.areas-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 1.25rem;
-    width: 100%;
-    max-width: 720px;
-    margin: 0 auto;
-}
-.area-card {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem 1.5rem;
-    background: var(--blanco);
-    border-radius: var(--radio-lg);
-    box-shadow: var(--sombra);
-    text-decoration: none;
-    color: var(--gris-texto);
-    font-weight: 600;
-    font-size: 1.1rem;
-    border: 3px solid transparent;
-    transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
-    animation: areaCardEnter 0.45s ease-out backwards;
-}
-.area-card:nth-child(1) { animation-delay: 0.1s; }
-.area-card:nth-child(2) { animation-delay: 0.16s; }
-.area-card:nth-child(3) { animation-delay: 0.22s; }
-.area-card:nth-child(4) { animation-delay: 0.28s; }
-.area-card:nth-child(5) { animation-delay: 0.34s; }
-.area-card:nth-child(6) { animation-delay: 0.4s; }
-.area-card:nth-child(n+7) { animation-delay: 0.46s; }
-@keyframes areaCardEnter {
-    from { opacity: 0; transform: translateY(16px) scale(0.96); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
-.area-card:hover {
-    border-color: var(--verde);
-    box-shadow: var(--sombra-hover);
-    transform: translateY(-4px);
-}
-.area-card:active { transform: translateY(-1px); }
-.area-card-icon {
-    width: 56px;
-    height: 56px;
-    margin-bottom: 1rem;
-    background: var(--verde-claro);
-    color: var(--verde);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-.area-card-icon svg {
-    width: 28px;
-    height: 28px;
-    stroke: currentColor;
-    fill: none;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 2;
-    transition: transform 0.25s ease;
-}
-.area-card:hover .area-card-icon {
-    background: var(--verde);
-    color: var(--blanco);
-}
-.area-card:hover .area-card-icon svg {
-    transform: scale(1.08);
-}
-@keyframes area-icon-float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-3px); }
-}
-.area-card .area-card-icon svg {
-    animation: area-icon-float 3s ease-in-out infinite;
-}
-.area-card:hover .area-card-icon svg {
-    animation: none;
-}
-@media (prefers-reduced-motion: reduce) {
-    .area-card .area-card-icon svg { animation: none; }
-    .areas-page, .areas-page h1, .areas-page .sub, .area-card { animation: none; }
-}
-.area-card-name { text-align: center; letter-spacing: 0.02em; }
-.areas-sin-area {
-    text-align: center;
-    padding: 2rem;
-    background: var(--rojo-claro);
-    border: 2px solid rgba(196, 30, 58, 0.2);
-    border-radius: var(--radio-lg);
-    max-width: 420px;
-    margin: 0 auto;
-}
-.areas-sin-area h2 {
-    font-size: 1.25rem;
-    color: var(--rojo-oscuro);
-    margin-bottom: 0.75rem;
-}
-.areas-sin-area p {
-    color: var(--gris-texto);
-    font-size: 0.95rem;
-    margin: 0;
-}
-@media (max-width: 600px) {
-    .areas-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
-    .area-card { padding: 1.5rem 1rem; font-size: 1rem; }
-}
-</style>
-
 <div class="areas-page">
-    <h1>Áreas de trabajo</h1>
-    <p class="sub">Selecciona el área con la que vas a trabajar. El dashboard y los módulos mostrarán la información de esa área.</p>
+    <div class="areas-hero-distribution">
+        <div class="areas-hero-main">
+            <h1>Áreas de trabajo</h1>
+            <p class="sub">Selecciona el área con la que vas a trabajar. El dashboard y los módulos mostrarán la información de esa área.</p>
+        </div>
+        {% if not sin_area %}
+        <div class="areas-hero-side" aria-label="Resumen">
+            <span class="areas-hero-kicker">Disponibles</span>
+            <strong class="areas-hero-count">{{ areas_para_elegir|length }}</strong>
+            <span class="areas-hero-label">áreas habilitadas</span>
+        </div>
+        {% endif %}
+    </div>
 
     {% if sin_area %}
         <div class="areas-sin-area" role="alert">
@@ -157,6 +22,7 @@
             <p>No tienes un área de trabajo asignada. Contacta al administrador para que te asigne un área y puedas acceder al sistema.</p>
         </div>
     {% else %}
+        <div class="areas-grid-wrap">
         <div class="areas-grid">
             {% for area in areas_para_elegir %}
             <a href="{{ url_for('main.entrar_area', nombre=area.nombre) }}" class="area-card">
@@ -180,6 +46,7 @@
                 <span class="area-card-name">{{ area.nombre }}</span>
             </a>
             {% endfor %}
+        </div>
         </div>
     {% endif %}
 </div>

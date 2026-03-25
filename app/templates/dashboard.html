@@ -2,130 +2,6 @@
 {% from 'includes/module_icons.html' import module_icon %}
 {% block title %}Dashboard - LockerBeef{% endblock %}
 {% block content %}
-{# Paleta Enterprise (Stripe/Linear): fondos neutros, acento verde, bordes sutiles #}
-<style>
-.ent {
-    --ent-bg: #fafafa;
-    --ent-surface: #ffffff;
-    --ent-border: #e5e7eb;
-    --ent-text: #111827;
-    --ent-text-muted: #6b7280;
-    --ent-accent: #059669;
-    --ent-accent-hover: #047857;
-    --ent-hover: #f9fafb;
-    --ent-skeleton: #e5e7eb;
-    --ent-radius: 8px;
-    --ent-radius-lg: 12px;
-    --ent-shadow: 0 1px 2px rgba(0,0,0,0.04);
-    --ent-shadow-hover: 0 4px 12px rgba(0,0,0,0.08);
-}
-.ent .dashboard-layout { background: var(--ent-bg); }
-.ent .dashboard-sidebar { background: var(--ent-surface); border-right: 1px solid var(--ent-border); }
-.ent .dashboard-center { padding: 1.5rem 2rem; }
-/* Rejilla 12 columnas */
-.ent .grid-12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; align-items: start; }
-.ent .col-12 { grid-column: span 12; }
-.ent .col-6 { grid-column: span 6; }
-.ent .col-4 { grid-column: span 4; }
-.ent .col-3 { grid-column: span 3; }
-.ent .col-8 { grid-column: span 8; }
-@media (max-width: 900px) {
-    .ent .col-4, .ent .col-3 { grid-column: span 6; }
-    .ent .col-6, .ent .col-8 { grid-column: span 12; }
-}
-@media (max-width: 600px) {
-    .ent .col-4, .ent .col-3, .ent .col-6 { grid-column: span 12; }
-}
-/* Barra superior: búsqueda + filtros */
-.ent .dashboard-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-}
-.ent .dashboard-toolbar h1 { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--ent-text); letter-spacing: -0.02em; }
-/* Widgets estadísticas */
-.ent .stat-card {
-    background: var(--ent-surface);
-    border: 1px solid var(--ent-border);
-    border-radius: var(--ent-radius-lg);
-    padding: 1.25rem;
-    box-shadow: var(--ent-shadow);
-    transition: box-shadow 0.25s ease, transform 0.25s ease;
-    animation: cardEnter 0.45s ease-out backwards;
-}
-.ent .stat-card:nth-child(1) { animation-delay: 0.05s; }
-.ent .stat-card:nth-child(2) { animation-delay: 0.1s; }
-.ent .stat-card:nth-child(3) { animation-delay: 0.15s; }
-.ent .stat-card:nth-child(4) { animation-delay: 0.2s; }
-.ent .stat-card:nth-child(5) { animation-delay: 0.25s; }
-.ent .stat-card:nth-child(6) { animation-delay: 0.3s; }
-.ent .stat-card:nth-child(7) { animation-delay: 0.35s; }
-@keyframes cardEnter {
-    from { opacity: 0; transform: translateY(12px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.ent .stat-card:hover { box-shadow: var(--ent-shadow-hover); transform: translateY(-2px); }
-.ent .stat-card .stat-value { font-size: 1.75rem; font-weight: 700; color: var(--ent-accent); letter-spacing: -0.02em; line-height: 1.2; }
-.ent .stat-card .stat-label { font-size: 0.8125rem; color: var(--ent-text-muted); margin-top: 0.25rem; font-weight: 500; }
-/* Skeleton de carga */
-.ent .skeleton { background: linear-gradient(90deg, var(--ent-skeleton) 25%, #f3f4f6 50%, var(--ent-skeleton) 75%); background-size: 200% 100%; animation: ent-skeleton 1.2s ease-in-out infinite; border-radius: 4px; }
-@keyframes ent-skeleton { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-.ent .stat-card.skeleton-loading .stat-value { height: 1.75rem; }
-.ent .stat-card.skeleton-loading .stat-label { height: 0.875rem; width: 60%; margin-top: 0.5rem; }
-/* Gráfico */
-.ent .widget-chart {
-    background: var(--ent-surface);
-    border: 1px solid var(--ent-border);
-    border-radius: var(--ent-radius-lg);
-    padding: 1.25rem;
-    box-shadow: var(--ent-shadow);
-}
-.ent .widget-chart h3 { margin: 0 0 1rem; font-size: 0.8125rem; font-weight: 600; color: var(--ent-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.ent .widget-chart .chart-container { height: 220px; position: relative; }
-/* Panel derecho sesión */
-.ent .dashboard-right {
-    background: var(--ent-surface);
-    border-left: 1px solid var(--ent-border);
-    padding: 1.25rem;
-}
-.ent .panel-title { font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ent-text-muted); margin: 0 0 1rem; }
-.ent .panel-user { font-weight: 600; color: var(--ent-text); margin-bottom: 0.25rem; }
-.ent .panel-role { font-size: 0.8125rem; color: var(--ent-text-muted); margin-bottom: 1rem; }
-.ent .modulo-icon-svg { display: flex; align-items: center; justify-content: center; }
-.ent .modulo-icon-svg svg { width: 22px; height: 22px; flex-shrink: 0; }
-.ent .modulo-link {
-    transition: background 0.2s ease, padding-left 0.2s ease, border-color 0.2s ease;
-}
-.ent .modulo-link:hover { padding-left: 1.1rem; }
-.ent .modulos-vertical li {
-    animation: navItemEnter 0.35s ease-out backwards;
-}
-.ent .modulos-vertical li:nth-child(1) { animation-delay: 0.08s; }
-.ent .modulos-vertical li:nth-child(2) { animation-delay: 0.12s; }
-.ent .modulos-vertical li:nth-child(3) { animation-delay: 0.16s; }
-.ent .modulos-vertical li:nth-child(4) { animation-delay: 0.2s; }
-.ent .modulos-vertical li:nth-child(5) { animation-delay: 0.24s; }
-.ent .modulos-vertical li:nth-child(6) { animation-delay: 0.28s; }
-.ent .modulos-vertical li:nth-child(7) { animation-delay: 0.32s; }
-.ent .modulos-vertical li:nth-child(8) { animation-delay: 0.36s; }
-.ent .modulos-vertical li:nth-child(9) { animation-delay: 0.4s; }
-.ent .modulos-vertical li:nth-child(10) { animation-delay: 0.44s; }
-.ent .modulos-vertical li:nth-child(n+11) { animation-delay: 0.48s; }
-@keyframes navItemEnter {
-    from { opacity: 0; transform: translateX(-8px); }
-    to { opacity: 1; transform: translateX(0); }
-}
-.ent .dashboard-center .dashboard-toolbar { animation: cardEnter 0.4s ease-out backwards; }
-.ent .widget-chart { animation: cardEnter 0.5s ease-out 0.15s backwards; }
-.ent .dashboard-right { animation: cardEnter 0.45s ease-out 0.1s backwards; }
-@media (prefers-reduced-motion: reduce) {
-    .ent .stat-card, .ent .modulos-vertical li, .ent .dashboard-center .dashboard-toolbar,
-    .ent .widget-chart, .ent .dashboard-right { animation: none; }
-}
-</style>
-
 <div class="dashboard-layout ent" id="dashboardEnt">
     <aside class="dashboard-sidebar" aria-label="Navegación">
         <div class="sidebar-brand">LockerBeef</div>
@@ -164,13 +40,19 @@
     </aside>
 
     <div class="dashboard-center">
-        {# Fila 1: Título #}
-        <div class="dashboard-toolbar">
-            <h1>Panel de control</h1>
+        <div class="dashboard-toolbar dashboard-toolbar-redistributed">
+            <div class="dashboard-toolbar-main">
+                <h1>Panel de control</h1>
+                <p class="hint">Vista general en tiempo real de tu operación por área.</p>
+            </div>
+            <div class="dashboard-toolbar-meta" aria-label="Resumen rápido">
+                <span class="toolbar-chip">Área: {{ current_area or '—' }}</span>
+                <span class="toolbar-chip">Usuario: {{ session.get('user_nombre', '') or '—' }}</span>
+            </div>
         </div>
 
-        {# Fila 2: Widgets de estadísticas (rejilla 12 columnas) — actualización en tiempo real #}
-        <section class="grid-12" aria-label="Estadísticas" id="dashboardStatsSection">
+        <div class="dashboard-content-distribution">
+            <section class="grid-12 dashboard-stats-grid" aria-label="Estadísticas" id="dashboardStatsSection">
             <div class="col-3 stat-card" data-stat="total_lockers">
                 <div class="stat-value">{{ total_lockers }}</div>
                 <div class="stat-label">Total lockers</div>
@@ -199,58 +81,39 @@
                 <div class="stat-value">{{ total_retiros }}</div>
                 <div class="stat-label">Retiros</div>
             </div>
-        </section>
+            </section>
 
-        {# Fila 3: Gráfico + Panel sesión #}
-        <section class="grid-12" style="margin-top: 1.5rem;">
-            <div class="col-8 widget-chart">
-                <h3>Asignaciones — últimos 7 días</h3>
-                <div class="chart-container">
-                    <canvas id="chartAsignaciones" width="400" height="220" aria-label="Gráfico de asignaciones"></canvas>
+            <section class="widget-chart dashboard-chart-panel dashboard-reminders-widget" aria-label="Recordatorios">
+                <div class="reminders-widget-header">
+                    <h3>Recordatorios</h3>
+                    <button type="button" class="cal-notify-btn" id="calNotifyBtn" title="Permitir notificaciones del sistema para los recordatorios">Activar avisos</button>
                 </div>
-            </div>
-            <aside class="col-4 dashboard-right" aria-label="Sesión">
+                <div id="reminderCalendarMount" class="reminder-calendar-mount" data-user-id="{{ session.get('user_id', 0) }}"></div>
+            </section>
+            <div id="reminderToast" class="reminder-toast" hidden role="status" aria-live="polite"></div>
+
+            <aside class="dashboard-right dashboard-right-inline" aria-label="Sesión">
                 <div class="panel-title">Sesión</div>
                 <p class="panel-user">{{ session.get('user_nombre', '') }}</p>
                 <p class="panel-role">
                     {% if session.get('user_rol') == 'superadmin' %}Super Administrador{% elif session.get('user_rol') == 'admin' %}Administrador{% elif session.get('user_rol') == 'coordinador' %}Coordinador{% else %}Usuario{% endif %}
                 </p>
-                <dl class="panel-detail" style="font-size: 0.8rem; color: var(--ent-text); line-height: 1.6;">
-                    <dt style="color: var(--ent-text-muted); font-weight: 500; margin-top: 0.5rem;">Tiempo</dt>
-                    <dd style="margin: 0.15rem 0 0;"><span id="sessionTimerSidebar">00:00:00</span></dd>
-                    <dt style="color: var(--ent-text-muted); font-weight: 500; margin-top: 0.5rem;">Área actual</dt>
-                    <dd style="margin: 0.15rem 0 0;">{{ current_area or '—' }}</dd>
+                <dl class="panel-detail">
+                    <dt>Tiempo</dt>
+                    <dd><span id="sessionTimerSidebar">00:00:00</span></dd>
+                    <dt>Área actual</dt>
+                    <dd>{{ current_area or '—' }}</dd>
                 </dl>
             </aside>
-        </section>
+        </div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous" defer></script>
+<script src="{{ url_for('static', filename='js/dashboard-reminders.js') }}" defer></script>
 <script>
 (function() {
     var statsUrl = "{{ url_for('main.api_dashboard_stats') }}";
     var POLL_INTERVAL_MS = 15000;
-
-    var chartInstance = null;
-    var ctx = document.getElementById('chartAsignaciones');
-    if (ctx) {
-        var labels = {{ chart_labels|tojson }};
-        var data = {{ chart_data|tojson }};
-        chartInstance = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{ label: 'Asignaciones', data: data, borderColor: '#059669', backgroundColor: 'rgba(5, 150, 105, 0.08)', fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#059669', pointBorderColor: '#fff', pointBorderWidth: 2 }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
-                scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { font: { size: 11 }, color: '#6b7280' } }, x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#6b7280', maxRotation: 0 } } }
-            }
-        });
-    }
 
     function updateDashboardFromJson(stats) {
         if (!stats) return;
@@ -263,11 +126,6 @@
                     if (valEl && stats[key] !== undefined) valEl.textContent = stats[key];
                 }
             });
-        }
-        if (chartInstance && stats.chart_labels && stats.chart_data) {
-            chartInstance.data.labels = stats.chart_labels;
-            chartInstance.data.datasets[0].data = stats.chart_data;
-            chartInstance.update('none');
         }
     }
 

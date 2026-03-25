@@ -1,7 +1,22 @@
 Pon aquí los CSV exportados de tus hojas (uno por tabla).
-Nombres esperados:
-  base_lockers.csv, base_dotaciones.csv, registro_personal.csv, personal_presupuestado.csv,
-  dotaciones_disponibles.csv, locker_disponibles.csv, registro_asignaciones.csv, historial_retiros.csv
+Nombres canónicos (o alias que importar_todo.py reconoce automáticamente):
+  base_lockers.csv  ó  LOCKERES.csv
+  base_dotaciones.csv  ó  DOTACIONES.csv
+  registro_personal.csv  ó  PERSONAL.csv
+  personal_presupuestado.csv  ó  PERSONAL PRESUPUESTADO.csv
+  dotaciones_disponibles.csv  ó  DOTACIONES DISPONIBLES.csv
+  locker_disponibles.csv  ó  LOCKER DISPONIBLES.csv
+  registro_asignaciones.csv  ó  ASIGNACIONES.csv
+  historial_retiros.csv  ó  RETIROS.csv
+Si existen ambos nombres, se usa primero el canónico (si tiene al menos 2 filas).
+
+Validar ASIGNACIONES.csv (áreas generales; Desposte va aparte en ASIGNACIONES DESPOSTE.csv):
+  python scripts/validar_asignaciones_csv.py
+  python scripts/validar_asignaciones_csv.py --no-db
+
+Carga completa tras reinstalar MySQL (CSV en esta carpeta):
+  python database/cargar_datos_desde_csv.py --replace
+  Ver docs/CARGAR_DATOS_DESPUES_DE_REINSTALAR.md
 
 Importación específica área DESPOSTE:
   - DOTACION DESPOSTE.csv → Base de Dotaciones (solo área DESPOSTE): python database/importar_dotacion_desposte.py

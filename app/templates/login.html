@@ -1,1233 +1,235 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#050b14">
+    <meta name="color-scheme" content="dark light">
     <title>Iniciar sesión — LockerBeef</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --login-bg: #0f172a;
-            --login-bg-soft: #1e293b;
-            --login-surface: #ffffff;
-            --login-border: #e2e8f0;
-            --login-border-focus: #c41e3a;
-            --login-text: #0f172a;
-            --login-text-muted: #64748b;
-            --login-accent: #c41e3a;
-            --login-accent-hover: #9e1830;
-            --login-accent-glow: rgba(196, 30, 58, 0.15);
-            --login-error: #dc2626;
-            --login-error-bg: #fef2f2;
-            --login-success: #16a34a;
-            --login-success-bg: #f0fdf4;
-            --login-radius: 12px;
-            --login-radius-lg: 16px;
-            --login-shadow: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.05);
-            --login-shadow-card: 0 25px 50px -12px rgba(0,0,0,0.15);
-        }
-
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html { font-size: 16px; height: 100%; overflow: hidden; }
-        body {
-            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-            height: 100%;
-            min-height: 100vh;
-            max-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            background: var(--login-bg);
-            color: var(--login-text);
-            overflow: hidden;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        .login-split {
-            display: flex;
-            flex: 1;
-            width: 100%;
-            min-height: 0;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-        .login-split::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(196, 30, 58, 0.1) 0%, transparent 50%),
-                        radial-gradient(ellipse 60% 80% at 100% 100%, rgba(30, 41, 59, 0.5) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: 0;
-        }
-
-        /* Ocultar panel derecho antiguo; formulario ocupa todo el espacio centrado */
-        .login-brand {
-            display: none;
-        }
-
-        /* ============================================
-           FONDO (mantenido para compatibilidad, no visible)
-           Técnica: Gradientes CSS animados (sin dependencias)
-           Duración: 25s | Curva: ease-in-out | Loop: infinite
-           ============================================ */
-        .login-brand {
-            flex: 1;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            padding: 3rem 4rem;
-            padding-bottom: calc(3rem + 32px);
-            position: relative;
-            overflow: hidden;
-            /* Base: gradiente animado entre 4 tonos (loop sin cortes) */
-            background: linear-gradient(135deg, var(--green-deep) 0%, var(--green-dark) 25%, var(--green-mid) 50%, var(--green-mint) 75%, var(--green-deep) 100%);
-            background-size: 400% 400%;
-            animation: login-wave-gradient 25s ease-in-out infinite;
-            -webkit-animation: login-wave-gradient 25s ease-in-out infinite;
-        }
-        @keyframes login-wave-gradient {
-            0%, 100% { background-position: 0% 50%; }
-            25% { background-position: 50% 100%; }
-            50% { background-position: 100% 50%; }
-            75% { background-position: 50% 0%; }
-        }
-        @-webkit-keyframes login-wave-gradient {
-            0%, 100% { background-position: 0% 50%; }
-            25% { background-position: 50% 100%; }
-            50% { background-position: 100% 50%; }
-            75% { background-position: 50% 0%; }
-        }
-        /* Capa 1: Ondas/nubes suaves (radial-gradient animado) */
-        .login-brand::before {
-            content: '';
-            position: absolute;
-            inset: -30%;
-            z-index: 0;
-            background: radial-gradient(ellipse 70% 70% at 30% 70%, var(--green-lime) 0%, transparent 50%),
-                        radial-gradient(ellipse 60% 60% at 70% 30%, var(--green-pale) 0%, transparent 45%),
-                        radial-gradient(ellipse 50% 50% at 50% 50%, rgba(167, 243, 208, 0.3) 0%, transparent 55%);
-            opacity: 0.6;
-            animation: login-cloud-drift 25s ease-in-out infinite;
-            -webkit-animation: login-cloud-drift 25s ease-in-out infinite;
-            pointer-events: none;
-            will-change: transform;
-        }
-        @keyframes login-cloud-drift {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            25% { transform: translate(4%, 3%) scale(1.06); }
-            50% { transform: translate(-3%, 4%) scale(1.03); }
-            75% { transform: translate(3%, -2%) scale(1.05); }
-        }
-        @-webkit-keyframes login-cloud-drift {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            25% { transform: translate(4%, 3%) scale(1.06); }
-            50% { transform: translate(-3%, 4%) scale(1.03); }
-            75% { transform: translate(3%, -2%) scale(1.05); }
-        }
-        /* Capa 2: Orbes tipo nubes (movimiento lento, 25s) */
-        .login-brand-orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            -webkit-filter: blur(80px);
-            opacity: 0.35;
-            pointer-events: none;
-            z-index: 0;
-            will-change: transform;
-        }
-        .login-brand-orb--1 {
-            width: 400px;
-            height: 400px;
-            background: var(--green-mint);
-            top: -10%;
-            left: -5%;
-            animation: login-orb-wave 25s ease-in-out infinite;
-            -webkit-animation: login-orb-wave 25s ease-in-out infinite;
-        }
-        .login-brand-orb--2 {
-            width: 350px;
-            height: 350px;
-            background: var(--green-lime);
-            bottom: -15%;
-            right: -10%;
-            animation: login-orb-wave 25s ease-in-out infinite reverse;
-            -webkit-animation: login-orb-wave 25s ease-in-out infinite reverse;
-            animation-delay: -8s;
-        }
-        .login-brand-orb--3 {
-            width: 280px;
-            height: 280px;
-            background: var(--green-pale);
-            top: 40%;
-            left: 50%;
-            margin: -140px 0 0 -140px;
-            animation: login-orb-wave 25s ease-in-out infinite;
-            -webkit-animation: login-orb-wave 25s ease-in-out infinite;
-            animation-delay: -15s;
-        }
-        @keyframes login-orb-wave {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            33% { transform: translate(25px, -30px) scale(1.04); }
-            66% { transform: translate(-20px, 25px) scale(0.98); }
-        }
-        @-webkit-keyframes login-orb-wave {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            33% { transform: translate(25px, -30px) scale(1.04); }
-            66% { transform: translate(-20px, 25px) scale(0.98); }
-        }
-        /* Partículas ligeras: pocos elementos, solo transform (GPU) */
-        .login-particles {
-            position: absolute;
-            inset: 0;
-            z-index: 0;
-            pointer-events: none;
-            overflow: hidden;
-        }
-        .login-particle {
-            position: absolute;
-            width: 3px;
-            height: 3px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.35);
-            will-change: transform;
-            animation: login-particle-float 20s ease-in-out infinite;
-            -webkit-animation: login-particle-float 20s ease-in-out infinite;
-        }
-        .login-particle:nth-child(1)  { left: 10%; top: 20%; animation-delay: 0s; }
-        .login-particle:nth-child(2)  { left: 25%; top: 70%; animation-delay: -3s; }
-        .login-particle:nth-child(3)  { left: 45%; top: 15%; animation-delay: -6s; }
-        .login-particle:nth-child(4)  { left: 60%; top: 55%; animation-delay: -9s; }
-        .login-particle:nth-child(5)  { left: 80%; top: 30%; animation-delay: -2s; }
-        .login-particle:nth-child(6)  { left: 15%; top: 50%; animation-delay: -12s; }
-        .login-particle:nth-child(7)  { left: 70%; top: 75%; animation-delay: -5s; }
-        .login-particle:nth-child(8)  { left: 35%; top: 40%; animation-delay: -8s; }
-        .login-particle:nth-child(9)  { left: 90%; top: 60%; animation-delay: -14s; }
-        .login-particle:nth-child(10) { left: 5%; top: 85%; animation-delay: -4s; }
-        .login-particle:nth-child(11) { left: 50%; top: 90%; animation-delay: -11s; }
-        .login-particle:nth-child(12) { left: 75%; top: 10%; animation-delay: -7s; }
-        @keyframes login-particle-float {
-            0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
-            25% { transform: translate(8px, -12px) scale(1.2); opacity: 0.5; }
-            50% { transform: translate(-6px, 8px) scale(0.9); opacity: 0.4; }
-            75% { transform: translate(-10px, -5px) scale(1.1); opacity: 0.45; }
-        }
-        @-webkit-keyframes login-particle-float {
-            0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.35; }
-            25% { transform: translate(8px, -12px) scale(1.2); opacity: 0.5; }
-            50% { transform: translate(-6px, 8px) scale(0.9); opacity: 0.4; }
-            75% { transform: translate(-10px, -5px) scale(1.1); opacity: 0.45; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-            .login-particle { animation: none; opacity: 0.25; }
-            .login-deco-brand .login-deco-icon,
-            .login-deco-form { animation: none !important; -webkit-animation: none !important; }
-        }
-
-        /* Capa 3: Patrón sutil (sin animación para estabilidad) */
-        .login-brand-pattern {
-            position: absolute;
-            inset: 0;
-            z-index: 0;
-            background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
-            opacity: 0.6;
-            pointer-events: none;
-        }
-        /* Accesibilidad: reducir movimiento si el usuario lo prefiere */
-        @media (prefers-reduced-motion: reduce) {
-            .login-view.login-appear,
-            .login-view.recover-enter,
-            .login-view.register-enter,
-            .login-brand-content.brand-appear { animation: none; opacity: 1; }
-            .login-brand,
-            .login-brand::before,
-            .login-brand-orb {
-                animation: none !important;
-                -webkit-animation: none !important;
-            }
-            .login-brand {
-                background: linear-gradient(135deg, var(--green-deep) 0%, var(--green-dark) 50%, var(--green-mid) 100%);
-                background-size: auto;
-            }
-        }
-        .login-brand-content {
-            position: relative;
-            z-index: 1;
-            text-align: center;
-            max-width: 420px;
-            width: 100%;
-            box-sizing: border-box;
-        }
-        /* Aparición del contenido sobre el fondo verde (misma animación) */
-        .login-brand-content.brand-appear {
-            animation: login-entrance 0.45s ease-out forwards;
-            -webkit-animation: login-entrance 0.45s ease-out forwards;
-        }
-        /* Logo: caja y imagen con tamaño fijo */
-        .login-logo {
-            flex: 0 0 auto;
-            width: 200px;
-            height: 140px;
-            min-width: 200px;
-            max-width: 200px;
-            min-height: 140px;
-            max-height: 140px;
-            margin: 0 auto 2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: var(--login-radius-lg);
-            overflow: hidden;
-            background: rgba(255,255,255,0.95);
-            box-shadow: var(--login-shadow-card);
-            box-sizing: border-box;
-        }
-        .login-logo img {
-            display: block;
-            width: auto;
-            height: auto;
-            max-width: 200px;
-            max-height: 140px;
-            object-fit: contain;
-            object-position: center;
-        }
-        .login-logo-fallback {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 100%;
-            font-size: 3rem;
-            background: linear-gradient(135deg, var(--login-accent) 0%, var(--login-accent-hover) 100%);
-        }
-        /* Contraste y legibilidad: sombra sutil para texto sobre fondo dinámico */
-        .login-brand h1 {
-            font-size: 1.75rem;
-            font-weight: 700;
-            color: #fff;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.5rem;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.2);
-        }
-        .login-brand .tagline {
-            font-size: 0.95rem;
-            color: rgba(255,255,255,0.95);
-            font-weight: 500;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.25);
-        }
-        /* Animaciones decorativas: movimiento suave, no forzado, optimizado (solo transform/opacity) */
-        @keyframes login-deco-float {
-            0%, 100% { transform: translateY(0) translateZ(0); }
-            50% { transform: translateY(-6px) translateZ(0); }
-        }
-        @-webkit-keyframes login-deco-float {
-            0%, 100% { transform: translateY(0) translateZ(0); }
-            50% { transform: translateY(-6px) translateZ(0); }
-        }
-        @keyframes login-deco-form-drift {
-            0%, 100% { transform: translate(0, 0) translateZ(0); opacity: 0.14; }
-            50% { transform: translate(3px, -4px) translateZ(0); opacity: 0.16; }
-        }
-        @-webkit-keyframes login-deco-form-drift {
-            0%, 100% { transform: translate(0, 0) translateZ(0); opacity: 0.14; }
-            50% { transform: translate(3px, -4px) translateZ(0); opacity: 0.16; }
-        }
-        /* Objetos decorativos zona logo */
-        .login-deco-brand {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 1.5rem;
-            margin-top: 1.5rem;
-            flex-wrap: wrap;
-        }
-        .login-deco-brand .login-deco-icon {
-            display: inline-block;
-            width: 36px;
-            height: 36px;
-            opacity: 0;
-            color: rgba(255,255,255,0.95);
-            transform: translateY(0) translateZ(0);
-            will-change: transform;
-            transition: opacity 0.4s ease-out;
-        }
-        body.login-anim-ready .login-deco-brand .login-deco-icon {
-            opacity: 0.9;
-        }
-        body.login-anim-css .login-deco-brand .login-deco-icon {
-            animation: login-deco-float 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-            -webkit-animation: login-deco-float 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-        }
-        .login-deco-brand .login-deco-icon:nth-child(1) { transition-delay: 0.1s; }
-        .login-deco-brand .login-deco-icon:nth-child(2) { transition-delay: 0.2s; }
-        .login-deco-brand .login-deco-icon:nth-child(3) { transition-delay: 0.3s; }
-        body.login-anim-css .login-deco-brand .login-deco-icon:nth-child(2) { animation-delay: -0.8s; }
-        body.login-anim-css .login-deco-brand .login-deco-icon:nth-child(3) { animation-delay: -1.6s; }
-        .login-deco-brand .login-deco-icon svg {
-            width: 100%;
-            height: 100%;
-            display: block;
-        }
-
-        /* Objetos decorativos zona formulario (esquinas) */
-        .login-deco-form {
-            position: absolute;
-            pointer-events: none;
-            z-index: 0;
-            opacity: 0;
-            color: var(--login-accent);
-            transform: translate(0, 0) translateZ(0);
-            will-change: transform, opacity;
-            transition: opacity 0.5s ease-out;
-        }
-        body.login-anim-ready .login-deco-form { opacity: 0.14; }
-        body.login-anim-css .login-deco-form {
-            animation: login-deco-form-drift 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-            -webkit-animation: login-deco-form-drift 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-        }
-        body.login-anim-css .login-deco-form--br { animation-delay: -2.5s; }
-        .login-deco-form--tl { top: 1rem; left: 1rem; }
-        .login-deco-form--br { bottom: 1rem; right: 1rem; }
-        .login-deco-form svg {
-            width: 64px;
-            height: 64px;
-            display: block;
-        }
-        .login-card { position: relative; z-index: 1; }
-
-        /* Panel único: formulario centrado sobre fondo oscuro */
-        .login-form-panel {
-            position: relative;
-            flex: 1;
-            width: 100%;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem 1.5rem;
-            padding-bottom: calc(2rem + 36px);
-            overflow-y: auto;
-            overflow-x: hidden;
-            z-index: 1;
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-        .login-header .login-logo {
-            width: 140px;
-            height: 98px;
-            min-width: 140px;
-            max-width: 140px;
-            min-height: 98px;
-            max-height: 98px;
-            margin: 0 auto 0.75rem;
-            border-radius: var(--login-radius-lg);
-            box-shadow: var(--login-shadow-card);
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .login-header .login-logo:hover {
-            transform: scale(1.03);
-            box-shadow: 0 30px 60px -15px rgba(0,0,0,0.25);
-        }
-        .login-header .login-logo img { max-width: 140px; max-height: 98px; }
-        .login-app-name {
-            font-size: 1.4rem;
-            font-weight: 700;
-            color: #fff;
-            letter-spacing: -0.03em;
-            margin-bottom: 0.2rem;
-        }
-        .login-tagline {
-            font-size: 0.8125rem;
-            color: rgba(255,255,255,0.7);
-            font-weight: 500;
-        }
-        .login-card {
-            width: 100%;
-            max-width: 400px;
-            margin: 0 auto;
-            padding: 2rem;
-            background: var(--login-surface);
-            border-radius: var(--login-radius-lg);
-            box-shadow: var(--login-shadow-card);
-        }
-        body.login-anim-ready .login-card {
-            animation: login-card-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-        }
-        @keyframes login-card-in {
-            from { opacity: 0; transform: translateY(16px) scale(0.98); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .login-card h2 {
-            font-size: 1.35rem;
-            font-weight: 700;
-            color: var(--login-text);
-            margin-bottom: 0.2rem;
-        }
-        .login-card .sub {
-            font-size: 0.875rem;
-            color: var(--login-text-muted);
-            margin-bottom: 1.25rem;
-        }
-        .login-card .sub.sub-with-icon {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1.25rem;
-        }
-        .login-card .login-user-icon {
-            flex-shrink: 0;
-            width: 1.25rem;
-            height: 1.25rem;
-            color: var(--login-text-muted);
-        }
-
-        /* Inputs: estados reposo, focus, error, éxito */
-        .login-field {
-            margin-bottom: 1rem;
-        }
-        .login-field label {
-            display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--login-text);
-            margin-bottom: 0.4rem;
-        }
-        .login-input {
-            width: 100%;
-            padding: 0.6rem 0.9rem;
-            font-family: inherit;
-            font-size: 0.9375rem;
-            color: var(--login-text);
-            background: var(--login-surface);
-            border: 1px solid var(--login-border);
-            border-radius: var(--login-radius);
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        .login-input::placeholder {
-            color: var(--login-text-muted);
-        }
-        .login-input:hover {
-            border-color: #CBD5E1;
-        }
-        .login-input:focus {
-            outline: none;
-            border-color: var(--login-border-focus);
-            box-shadow: 0 0 0 3px var(--login-accent-glow);
-        }
-        .login-input.is-invalid {
-            border-color: var(--login-error);
-            background: var(--login-error-bg);
-        }
-        .login-input.is-invalid:focus {
-            box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
-        }
-        .login-input.is-valid {
-            border-color: var(--login-success);
-        }
-        .login-input.is-valid:focus {
-            box-shadow: 0 0 0 3px var(--login-accent-glow);
-        }
-        .login-field-error {
-            font-size: 0.8125rem;
-            color: var(--login-error);
-            margin-top: 0.35rem;
-            display: none;
-        }
-        .login-field.has-error .login-field-error { display: block; }
-
-        .login-password-wrap {
-            position: relative;
-        }
-        .login-password-wrap .login-input {
-            padding-right: 2.75rem;
-        }
-        .login-toggle-password {
-            position: absolute;
-            right: 0.75rem;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 2rem;
-            height: 2rem;
-            padding: 0;
-            border: none;
-            background: none;
-            color: var(--login-text-muted);
-            cursor: pointer;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: color 0.2s, background 0.2s;
-        }
-        .login-toggle-password:hover {
-            color: var(--login-text);
-            background: rgba(0,0,0,0.06);
-        }
-        .login-toggle-password svg { width: 1.25rem; height: 1.25rem; }
-        .login-toggle-password .icon-eye-off { display: none; }
-        .login-toggle-password .icon-eye { display: block; }
-        .login-toggle-password[aria-pressed="true"] .icon-eye-off { display: block; }
-        .login-toggle-password[aria-pressed="true"] .icon-eye { display: none; }
-
-        /* Recordarme + Olvidé contraseña */
-        .login-options {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1.1rem;
-            font-size: 0.875rem;
-        }
-        .login-remember {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .login-remember input {
-            width: 1rem;
-            height: 1rem;
-            accent-color: var(--login-accent);
-            cursor: pointer;
-        }
-        .login-remember label {
-            margin: 0;
-            font-weight: 500;
-            color: var(--login-text);
-            cursor: pointer;
-        }
-        .login-forgot {
-            color: var(--login-text-muted);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-        .login-forgot:hover {
-            color: var(--login-accent);
-        }
-
-        /* Botón Acceder */
-        .login-submit {
-            width: 100%;
-            padding: 0.7rem 1.25rem;
-            font-family: inherit;
-            font-size: 1rem;
-            font-weight: 600;
-            color: #fff;
-            background: linear-gradient(135deg, var(--login-accent) 0%, var(--login-accent-hover) 100%);
-            border: none;
-            border-radius: var(--login-radius);
-            cursor: pointer;
-            transition: box-shadow 0.2s, transform 0.15s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-        }
-        .login-submit:hover:not(:disabled) {
-            box-shadow: 0 8px 20px var(--login-accent-glow);
-            transform: translateY(-1px);
-        }
-        .login-submit:active:not(:disabled) {
-            transform: translateY(0);
-        }
-        .login-submit:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-        }
-        .login-submit .spinner {
-            width: 1.25rem;
-            height: 1.25rem;
-            border: 2px solid rgba(255,255,255,0.4);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: login-spin 0.7s linear infinite;
-        }
-        @keyframes login-spin { to { transform: rotate(360deg); } }
-
-        /* Flash / mensajes */
-        .login-flash {
-            padding: 0.7rem 1rem;
-            border-radius: var(--login-radius);
-            margin-bottom: 1rem;
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-        .login-flash.error {
-            background: var(--login-error-bg);
-            color: var(--login-error);
-        }
-        .login-flash.success {
-            background: var(--login-success-bg);
-            color: var(--login-success);
-        }
-        .login-hint {
-            padding: 0.6rem 1rem;
-            margin-bottom: 0.85rem;
-            background: var(--login-success-bg);
-            border: 1px solid #86EFAC;
-            border-radius: var(--login-radius);
-            font-size: 0.85rem;
-            color: var(--login-accent-hover);
-        }
-
-        /* Animación única de aparición (sincronizada en todo el login) */
-        @keyframes login-entrance {
-            from { opacity: 0; transform: translateY(12px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        @-webkit-keyframes login-entrance {
-            from { opacity: 0; transform: translateY(12px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* Transición Login ↔ Recuperar */
-        .login-views {
-            position: relative;
-        }
-        .login-view {
-            transition: opacity 0.2s ease, transform 0.2s ease;
-        }
-        .login-view.hidden {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            opacity: 0;
-            pointer-events: none;
-            transform: translateY(8px);
-        }
-        .login-view.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
-        .login-view.login-appear,
-        .login-view.recover-enter,
-        .login-view.register-enter {
-            animation: login-entrance 0.35s ease-out forwards;
-            -webkit-animation: login-entrance 0.35s ease-out forwards;
-        }
-
-        .login-back {
-            margin-top: 1rem;
-            text-align: center;
-        }
-        .login-back a {
-            font-size: 0.9rem;
-            color: var(--login-text-muted);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.2s;
-        }
-        .login-back a:hover {
-            color: var(--login-accent);
-        }
-
-        /* Registro */
-        .login-register {
-            margin-top: 1rem;
-            text-align: center;
-            font-size: 0.875rem;
-            color: var(--login-text-muted);
-        }
-
-        /* Vista Registro: más compacta para caber sin scroll */
-        #viewRegister h2 { font-size: 1.25rem; }
-        #viewRegister .sub { margin-bottom: 0.9rem; }
-        #viewRegister .login-field { margin-bottom: 0.65rem; }
-        #viewRegister .login-field label { margin-bottom: 0.3rem; }
-        #viewRegister .login-input { padding: 0.5rem 0.85rem; font-size: 0.9rem; }
-        #viewRegister .login-submit { padding: 0.6rem 1rem; font-size: 0.95rem; }
-        #viewRegister .login-back { margin-top: 0.75rem; }
-        #viewRegister small { margin-top: 0.25rem; font-size: 0.75rem; }
-        .login-register a {
-            color: var(--login-accent);
-            font-weight: 600;
-            text-decoration: none;
-        }
-        .login-register a:hover { text-decoration: underline; }
-
-        /* Footer: fijo en la parte inferior de la pantalla */
-        .login-footer {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            padding: 0.5rem 1.5rem;
-            text-align: center;
-            font-size: 0.75rem;
-            color: var(--login-text-muted);
-            background: rgba(15, 23, 42, 0.9);
-            backdrop-filter: blur(8px);
-            border-top: 1px solid rgba(148, 163, 184, 0.2);
-            z-index: 10;
-        }
-        .login-footer a {
-            color: var(--login-accent);
-            text-decoration: none;
-        }
-        .login-footer a:hover { text-decoration: underline; }
-
-        /* Responsive: móvil — sin animaciones pesadas, scroll fluido */
-        @media (max-width: 900px) {
-            .login-split { flex-direction: column; }
-            .login-view,
-            .login-view.login-appear,
-            .login-view.recover-enter,
-            .login-view.register-enter,
-            .login-header.brand-appear {
-                animation: none !important;
-                -webkit-animation: none !important;
-                opacity: 1;
-                transform: none;
-                transition: none;
-            }
-            .login-view.hidden { opacity: 0; transform: translateY(4px); transition: opacity 0.15s ease, transform 0.15s ease; }
-            .login-view.active { opacity: 1; transform: translateY(0); transition: opacity 0.15s ease, transform 0.15s ease; }
-            .login-header .login-logo {
-                width: 120px; height: 84px; min-width: 120px; max-width: 120px; min-height: 84px; max-height: 84px;
-                margin-bottom: 1rem;
-            }
-            .login-header .login-logo img { max-width: 120px; max-height: 84px; object-fit: contain; }
-            .login-app-name { font-size: 1.35rem; }
-            .login-tagline { font-size: 0.85rem; }
-            .login-form-panel {
-                max-width: none;
-                min-height: auto;
-                padding: 1.25rem 1.25rem;
-                padding-bottom: calc(1.25rem + 32px);
-                -webkit-overflow-scrolling: touch;
-                overflow-y: auto;
-                overflow-x: hidden;
-            }
-            .login-card h2 { font-size: 1.25rem; }
-            .login-card .sub { font-size: 0.8125rem; margin-bottom: 1rem; }
-        }
-        @media (max-width: 480px) {
-            .login-form-panel { padding: 1rem 1rem; padding-bottom: calc(1rem + 32px); }
-            .login-header .login-logo { width: 100px; height: 70px; min-width: 100px; max-width: 100px; min-height: 70px; max-height: 70px; }
-            .login-header .login-logo img { max-width: 100px; max-height: 70px; }
-            .login-deco-brand .login-deco-icon { width: 28px; height: 28px; }
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+    <script>
+      (function(){try{var k='lockerbeef-login-theme',t=localStorage.getItem(k);if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+    </script>
 </head>
-<body data-show-register="{{ '1' if show_register|default(false) else '0' }}">
-    <div class="login-split">
-        <div class="login-form-panel">
-            <header class="login-header brand-appear" id="loginBrandContent">
-                <div class="login-logo" aria-hidden="true">
-                    <img src="{{ url_for('static', filename='dashboard/logo.png') }}" alt="Logo Colbeef / LockerBeef" class="login-logo-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                    <span class="login-logo-fallback" style="display: none;">🔐</span>
+<body class="login-page" data-show-register="{{ '1' if show_register|default(false) else '0' }}">
+    <a class="login-skip" href="#loginCard">Saltar al formulario</a>
+
+    <div class="login-bg" aria-hidden="true">
+        <div class="login-bg__mesh"></div>
+        <div class="login-bg__grid"></div>
+        <div class="login-bg__particles">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+        </div>
+    </div>
+
+    <button type="button" class="login-theme-toggle" id="themeToggle" aria-label="Activar modo claro" title="Modo claro">
+        <svg class="icon-moon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg class="icon-sun" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+    </button>
+
+    <div class="login-shell">
+        <aside class="login-aside" aria-label="Presentación">
+            <div class="login-aside__inner">
+                <div class="login-aside__logo" aria-hidden="true">
+                    <img src="{{ url_for('static', filename='dashboard/logo.png') }}" alt="" class="login-aside__logo-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <span class="login-aside__logo-fallback" style="display:none;">🔐</span>
                 </div>
-                <div class="login-app-name">LockerBeef</div>
-                <p class="login-tagline">Control de lockers, dotaciones y personal en un solo lugar.</p>
-            </header>
-            <div class="login-card">
-                <div id="loginFlashContainer">
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, msg in messages %}
-                                <div class="login-flash {{ 'error' if category == 'error' else 'success' }}" role="alert">{{ msg }}</div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-                </div>
-                <div class="login-views">
-                    <!-- Vista Login -->
-                    <div class="login-view active login-appear" id="viewLogin">
-            <h2>Iniciar sesión</h2>
-            <p class="sub sub-with-icon">
-                <svg class="login-user-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                </svg>
-                <span>Inicia sesión con tu cuenta</span>
-            </p>
-                        {% if palabra_clave_hint|default('') %}
-                        <div class="login-hint" role="status">
-                            <strong>Tu palabra clave para recordar:</strong> {{ palabra_clave_hint }}
+                <p class="login-aside__badge">COLBEEF.SAS</p>
+                <h1 class="login-aside__title">Bienvenido a <span>LockerBeef</span></h1>
+                <p class="login-aside__text">Control integral de lockers, dotaciones y personal. Datos claros, decisiones más rápidas.</p>
+                <ul class="login-aside__features">
+                    <li>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        <span>Visibilidad por área y en tiempo real</span>
+                    </li>
+                    <li>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        <span>Historial de asignaciones y retiros</span>
+                    </li>
+                    <li>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        <span>Experiencia pensada para planta y oficina</span>
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="login-main" id="main">
+            <div class="login-card-wrap">
+                <div class="login-card" id="loginCard" tabindex="-1">
+                    <div class="login-card__header">
+                        <div class="login-logo-compact" aria-hidden="true">
+                            <img src="{{ url_for('static', filename='dashboard/logo.png') }}" alt="" onerror="this.style.display='none';">
                         </div>
-                        {% endif %}
-
-                        <form method="post" action="{{ url_for('main.login') }}" class="login-form" id="loginForm" novalidate>
-                            <div class="login-field" id="fieldEmail">
-                                <label for="email">Correo electrónico</label>
-                                <input type="email" id="email" name="email" class="login-input" required
-                                    value="{{ email_value|default('', true)|e }}"
-                                    autocomplete="username" placeholder="tu@correo.com" autofocus>
-                                <span class="login-field-error" id="emailError">Ingresa un correo electrónico válido.</span>
-                            </div>
-                            <div class="login-field" id="fieldPassword">
-                                <label for="password">Contraseña</label>
-                                <div class="login-password-wrap">
-                                    <input type="password" id="password" name="password" class="login-input" required
-                                        autocomplete="current-password" placeholder="••••••••">
-                                    <button type="button" class="login-toggle-password" id="togglePassword" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
-                                        <svg class="icon-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                                        <svg class="icon-eye-off" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.501 4.501 0 106.262 6.262M4.5 12a7.5 7.5 0 0012 4.5"/></svg>
-                                    </button>
-                                </div>
-                                <span class="login-field-error" id="passwordError">La contraseña es obligatoria.</span>
-                            </div>
-                            <div class="login-options">
-                                <div class="login-remember">
-                                    <input type="checkbox" id="recordarme" name="recordarme" value="1" {{ 'checked' if recordarme_checked|default(false) else '' }}>
-                                    <label for="recordarme">Recordarme</label>
-                                </div>
-                                <a href="#" class="login-forgot" id="showRecover">Olvidé mi contraseña</a>
-                            </div>
-                            <button type="submit" class="login-submit" id="loginSubmit">
-                                <span class="btn-text">Acceder</span>
-                                <span class="spinner" style="display: none;" aria-hidden="true"></span>
-                            </button>
-                        </form>
-                        <p class="login-register">
-                            ¿No tienes cuenta? <a href="#" id="showRegister">Registrarse</a>
-                        </p>
+                        <div class="login-app-name">LockerBeef</div>
+                        <p class="login-tagline">Control de lockers, dotaciones y personal en un solo lugar.</p>
                     </div>
 
-                    <!-- Vista Recuperar contraseña -->
-                    <div class="login-view hidden" id="viewRecover">
-                        <h2>Recuperar contraseña</h2>
-                        <p class="sub">Ingresa tu correo y te enviaremos instrucciones para recuperar el acceso.</p>
-
-                        <form method="post" action="{{ url_for('main.restablecer_contrasena') }}" class="login-form" id="recoverForm" novalidate>
-                            <div class="login-field" id="fieldRecoverEmail">
-                                <label for="recoverEmail">Correo electrónico</label>
-                                <input type="email" id="recoverEmail" name="email" class="login-input" required
-                                    placeholder="tu@correo.com" autocomplete="email">
-                                <span class="login-field-error">Ingresa un correo electrónico válido.</span>
-                            </div>
-                            <button type="submit" class="login-submit" id="recoverSubmit">
-                                <span class="btn-text">Enviar instrucciones</span>
-                                <span class="spinner" style="display: none;" aria-hidden="true"></span>
-                            </button>
-                        </form>
-                        <p class="login-back">
-                            <a href="#" id="showLogin">← Volver al inicio de sesión</a>
-                        </p>
+                    <div id="loginFlashContainer">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, msg in messages %}
+                                    <div class="login-flash {{ 'error' if category == 'error' else 'success' }}" role="alert">{{ msg }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
                     </div>
 
-                    <!-- Vista Registro (misma página, sin redirigir) -->
-                    <div class="login-view hidden" id="viewRegister">
-                        <h2>Crear cuenta</h2>
-                        <p class="sub">Regístrate para acceder al sistema.</p>
+                    <div class="login-views">
+                        <!-- Vista Login -->
+                        <div class="login-view active login-appear" id="viewLogin">
+                            <h2>Iniciar sesión</h2>
+                            <p class="sub">
+                                <svg class="login-user-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                                </svg>
+                                <span>Inicia sesión con tu cuenta</span>
+                            </p>
 
-                        <form method="post" action="{{ url_for('main.registro') }}" class="login-form needs-validation" id="formRegistro" novalidate>
-                            <div class="login-field">
-                                <label for="regNombre">Nombre completo</label>
-                                <input type="text" id="regNombre" name="nombre" class="login-input" required placeholder="Tu nombre" value="{{ nombre_value|default('', true)|e }}" autocomplete="name">
-                                <span class="login-field-error">El nombre es obligatorio.</span>
+                            {% if palabra_clave_hint|default('') %}
+                            <div class="login-hint" role="status">
+                                <strong>Tu palabra clave para recordar:</strong> {{ palabra_clave_hint }}
                             </div>
-                            <div class="login-field">
-                                <label for="regEmail">Correo electrónico</label>
-                                <input type="email" id="regEmail" name="email" class="login-input" required placeholder="tu@correo.com" value="{{ email_value|default('', true)|e }}" autocomplete="email">
-                                <span class="login-field-error">Ingresa un correo electrónico válido.</span>
-                            </div>
-                            <div class="login-field">
-                                <label for="regPassword">Contraseña</label>
-                                <div class="login-password-wrap">
-                                    <input type="password" id="regPassword" name="password" class="login-input" required minlength="8" placeholder="Mín. 8 caracteres, mayúscula, número y símbolo" autocomplete="new-password">
-                                    <button type="button" class="login-toggle-password" id="toggleRegPassword" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
-                                        <svg class="icon-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                                        <svg class="icon-eye-off" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.501 4.501 0 106.262 6.262M4.5 12a7.5 7.5 0 0012 4.5"/></svg>
-                                    </button>
+                            {% endif %}
+
+                            <form method="post" action="{{ url_for('main.login') }}" class="login-form" id="loginForm" novalidate>
+                                <div class="login-field login-field-float" id="fieldEmail">
+                                    <input type="email" id="email" name="email" class="login-input" required
+                                        value="{{ email_value|default('', true)|e }}"
+                                        autocomplete="username" placeholder=" " autofocus
+                                        aria-describedby="emailError" inputmode="email">
+                                    <label class="login-float-label" for="email">Correo electrónico</label>
+                                    <span class="login-field-error" id="emailError" role="alert">Ingresa un correo electrónico válido.</span>
                                 </div>
-                                <small style="display:block; margin-top:0.25rem; font-size:0.75rem; color: var(--login-text-muted);">Mínimo 8 caracteres, una mayúscula, un número y un símbolo (ej. @ $ ! #).</small>
-                                <span class="login-field-error" id="regPasswordError">Use 8 caracteres como mínimo, una mayúscula, un número y un símbolo.</span>
-                            </div>
-                            <div class="login-field">
-                                <label for="regPassword2">Confirmar contraseña</label>
-                                <div class="login-password-wrap">
-                                    <input type="password" id="regPassword2" name="password2" class="login-input" required minlength="8" placeholder="Repite la contraseña (mismos requisitos)" autocomplete="new-password">
-                                    <button type="button" class="login-toggle-password" id="toggleRegPassword2" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
-                                        <svg class="icon-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                                        <svg class="icon-eye-off" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.501 4.501 0 106.262 6.262M4.5 12a7.5 7.5 0 0012 4.5"/></svg>
-                                    </button>
+
+                                <div class="login-field login-field-float" id="fieldPassword">
+                                    <div class="login-password-wrap">
+                                        <input type="password" id="password" name="password" class="login-input" required
+                                            autocomplete="current-password" placeholder=" "
+                                            aria-describedby="passwordError">
+                                        <label class="login-float-label" for="password">Contraseña</label>
+                                        <button type="button" class="login-toggle-password" id="togglePassword" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
+                                            <svg class="icon-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                            <svg class="icon-eye-off" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.501 4.501 0 106.262 6.262M4.5 12a7.5 7.5 0 0012 4.5"/></svg>
+                                        </button>
+                                    </div>
+                                    <span class="login-field-error" id="passwordError" role="alert">La contraseña es obligatoria.</span>
                                 </div>
-                                <span class="login-field-error" id="regPassword2Error">Las contraseñas deben coincidir.</span>
-                            </div>
-                            <div class="login-field">
-                                <label for="regPalabraClave">Palabra clave para recordar contraseña</label>
-                                <input type="text" id="regPalabraClave" name="palabra_clave" class="login-input" placeholder="Ej: nombre de mascota, ciudad..." value="{{ palabra_clave_value|default('', true)|e }}" autocomplete="off">
-                                <small style="display:block; margin-top:0.35rem; font-size:0.8125rem; color: var(--login-text-muted);">Si olvidas tu contraseña, esta pista se mostrará al fallar el inicio de sesión.</small>
-                            </div>
-                            <button type="submit" class="login-submit" id="registerSubmit">
-                                <span class="btn-text">Registrarse</span>
-                                <span class="spinner" style="display: none;" aria-hidden="true"></span>
-                            </button>
-                        </form>
-                        <p class="login-back">
-                            <a href="#" id="showLoginFromRegister">← Ya tengo cuenta, iniciar sesión</a>
-                        </p>
+
+                                <div class="login-options">
+                                    <label class="login-switch">
+                                        <input type="checkbox" id="recordarme" name="recordarme" value="1" class="login-switch-input" {{ 'checked' if recordarme_checked|default(false) else '' }}>
+                                        <span class="login-switch-track" aria-hidden="true">
+                                            <span class="login-switch-thumb"></span>
+                                        </span>
+                                        <span class="login-switch-text">Recordarme</span>
+                                    </label>
+                                    <a href="#" class="login-forgot" id="showRecover">¿Olvidaste tu contraseña?</a>
+                                </div>
+
+                                <button type="submit" class="login-submit" id="loginSubmit">
+                                    <span class="btn-text">Acceder</span>
+                                    <span class="spinner" style="display: none;" aria-hidden="true"></span>
+                                </button>
+                            </form>
+
+                            <p class="login-register">
+                                ¿No tienes cuenta? <a href="#" id="showRegister">Registrarse</a>
+                            </p>
+                        </div>
+
+                        <!-- Vista Recuperar -->
+                        <div class="login-view hidden" id="viewRecover">
+                            <h2>Recuperar contraseña</h2>
+                            <p class="sub">Ingresa tu correo y te enviaremos instrucciones para recuperar el acceso.</p>
+
+                            <form method="post" action="{{ url_for('main.restablecer_contrasena') }}" class="login-form" id="recoverForm" novalidate>
+                                <div class="login-field login-field-float" id="fieldRecoverEmail">
+                                    <input type="email" id="recoverEmail" name="email" class="login-input" required
+                                        placeholder=" " autocomplete="email" inputmode="email">
+                                    <label class="login-float-label" for="recoverEmail">Correo electrónico</label>
+                                    <span class="login-field-error" role="alert">Ingresa un correo electrónico válido.</span>
+                                </div>
+                                <button type="submit" class="login-submit" id="recoverSubmit">
+                                    <span class="btn-text">Enviar instrucciones</span>
+                                    <span class="spinner" style="display: none;" aria-hidden="true"></span>
+                                </button>
+                            </form>
+                            <p class="login-back">
+                                <a href="#" id="showLogin">← Volver al inicio de sesión</a>
+                            </p>
+                        </div>
+
+                        <!-- Vista Registro -->
+                        <div class="login-view hidden" id="viewRegister">
+                            <h2>Crear cuenta</h2>
+                            <p class="sub">Regístrate para acceder al sistema.</p>
+
+                            <form method="post" action="{{ url_for('main.registro') }}" class="login-form needs-validation" id="formRegistro" novalidate>
+                                <div class="login-field login-field-float">
+                                    <input type="text" id="regNombre" name="nombre" class="login-input" required placeholder=" " value="{{ nombre_value|default('', true)|e }}" autocomplete="name">
+                                    <label class="login-float-label" for="regNombre">Nombre completo</label>
+                                    <span class="login-field-error" role="alert">El nombre es obligatorio.</span>
+                                </div>
+                                <div class="login-field login-field-float">
+                                    <input type="email" id="regEmail" name="email" class="login-input" required placeholder=" " value="{{ email_value|default('', true)|e }}" autocomplete="email" inputmode="email">
+                                    <label class="login-float-label" for="regEmail">Correo electrónico</label>
+                                    <span class="login-field-error" role="alert">Ingresa un correo electrónico válido.</span>
+                                </div>
+                                <div class="login-field login-field-float">
+                                    <div class="login-password-wrap">
+                                        <input type="password" id="regPassword" name="password" class="login-input" required minlength="8" placeholder=" " autocomplete="new-password" aria-describedby="regPwdHint regPasswordError">
+                                        <label class="login-float-label" for="regPassword">Contraseña</label>
+                                        <button type="button" class="login-toggle-password" id="toggleRegPassword" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
+                                            <svg class="icon-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                            <svg class="icon-eye-off" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.501 4.501 0 106.262 6.262M4.5 12a7.5 7.5 0 0012 4.5"/></svg>
+                                        </button>
+                                    </div>
+                                    <small id="regPwdHint" style="display:block; margin-top:0.35rem; font-size:0.75rem; color: var(--lb-text-muted);">Mínimo 8 caracteres, una mayúscula, un número y un símbolo (ej. @ $ ! #).</small>
+                                    <span class="login-field-error" id="regPasswordError" role="alert">Use 8 caracteres como mínimo, una mayúscula, un número y un símbolo.</span>
+                                </div>
+                                <div class="login-field login-field-float">
+                                    <div class="login-password-wrap">
+                                        <input type="password" id="regPassword2" name="password2" class="login-input" required minlength="8" placeholder=" " autocomplete="new-password">
+                                        <label class="login-float-label" for="regPassword2">Confirmar contraseña</label>
+                                        <button type="button" class="login-toggle-password" id="toggleRegPassword2" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
+                                            <svg class="icon-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                            <svg class="icon-eye-off" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.501 4.501 0 106.262 6.262M4.5 12a7.5 7.5 0 0012 4.5"/></svg>
+                                        </button>
+                                    </div>
+                                    <span class="login-field-error" id="regPassword2Error" role="alert">Las contraseñas deben coincidir.</span>
+                                </div>
+                                <div class="login-field login-field-float">
+                                    <input type="text" id="regPalabraClave" name="palabra_clave" class="login-input" placeholder=" " value="{{ palabra_clave_value|default('', true)|e }}" autocomplete="off">
+                                    <label class="login-float-label" for="regPalabraClave">Palabra clave (pista)</label>
+                                    <small style="display:block; margin-top:0.35rem; font-size:0.8125rem; color: var(--lb-text-muted);">Si olvidas tu contraseña, esta pista se mostrará al fallar el inicio de sesión.</small>
+                                </div>
+                                <button type="submit" class="login-submit" id="registerSubmit">
+                                    <span class="btn-text">Registrarse</span>
+                                    <span class="spinner" style="display: none;" aria-hidden="true"></span>
+                                </button>
+                            </form>
+                            <p class="login-back">
+                                <a href="#" id="showLoginFromRegister">← Ya tengo cuenta, iniciar sesión</a>
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </main>
     </div>
+
     <footer class="login-footer" role="contentinfo">&copy; {{ current_year }} LockerBeef. Todos los derechos reservados.</footer>
 
-    <script>
-        (function () {
-        var viewLogin = document.getElementById('viewLogin');
-        var viewRecover = document.getElementById('viewRecover');
-        var viewRegister = document.getElementById('viewRegister');
-        var showRecover = document.getElementById('showRecover');
-        var showLogin = document.getElementById('showLogin');
-        var showRegister = document.getElementById('showRegister');
-        var showLoginFromRegister = document.getElementById('showLoginFromRegister');
-
-        function goToRecover() {
-            viewLogin.classList.add('hidden');
-            viewLogin.classList.remove('active', 'login-appear');
-            if (viewRegister) { viewRegister.classList.add('hidden'); viewRegister.classList.remove('active', 'register-enter'); }
-            viewRecover.classList.remove('hidden');
-            viewRecover.classList.add('active', 'recover-enter');
-            document.getElementById('recoverEmail').focus();
-        }
-        function goToRegister() {
-            viewLogin.classList.add('hidden');
-            viewLogin.classList.remove('active', 'login-appear');
-            viewRecover.classList.add('hidden');
-            viewRecover.classList.remove('active', 'recover-enter');
-            viewRegister.classList.remove('hidden');
-            viewRegister.classList.add('active', 'register-enter');
-            var first = document.getElementById('regNombre');
-            if (first) first.focus();
-        }
-        function goToLogin() {
-            viewRecover.classList.add('hidden');
-            viewRecover.classList.remove('active', 'recover-enter');
-            if (viewRegister) { viewRegister.classList.add('hidden'); viewRegister.classList.remove('active', 'register-enter'); }
-            viewLogin.classList.remove('hidden');
-            viewLogin.classList.remove('login-appear');
-            viewLogin.classList.add('active');
-            var flashContainer = document.getElementById('loginFlashContainer');
-            if (flashContainer) { flashContainer.style.display = 'none'; flashContainer.innerHTML = ''; }
-            requestAnimationFrame(function() {
-                viewLogin.classList.add('login-appear');
-            });
-            var brandContent = document.getElementById('loginBrandContent');
-            if (brandContent) {
-                brandContent.classList.remove('brand-appear');
-                requestAnimationFrame(function() {
-                    brandContent.classList.add('brand-appear');
-                });
-            }
-            document.getElementById('email').focus();
-        }
-
-        if (showRecover) showRecover.addEventListener('click', function (e) { e.preventDefault(); goToRecover(); });
-        if (showLogin) showLogin.addEventListener('click', function (e) { e.preventDefault(); goToLogin(); });
-        if (showRegister) showRegister.addEventListener('click', function (e) { e.preventDefault(); goToRegister(); });
-        if (showLoginFromRegister) showLoginFromRegister.addEventListener('click', function (e) { e.preventDefault(); goToLogin(); });
-
-        if (document.body.getAttribute('data-show-register') === '1' && viewRegister) {
-            goToRegister();
-        }
-
-        // Toggle contraseña (login)
-        var toggle = document.getElementById('togglePassword');
-        var passInput = document.getElementById('password');
-        if (toggle && passInput) {
-            toggle.addEventListener('click', function () {
-                var isPass = passInput.type === 'password';
-                passInput.type = isPass ? 'text' : 'password';
-                toggle.setAttribute('aria-pressed', isPass ? 'true' : 'false');
-                toggle.setAttribute('title', isPass ? 'Ocultar contraseña' : 'Mostrar contraseña');
-            });
-        }
-        // Toggle contraseña (registro)
-        var toggleReg = document.getElementById('toggleRegPassword');
-        var regPass = document.getElementById('regPassword');
-        if (toggleReg && regPass) {
-            toggleReg.addEventListener('click', function () {
-                var isPass = regPass.type === 'password';
-                regPass.type = isPass ? 'text' : 'password';
-                toggleReg.setAttribute('aria-pressed', isPass ? 'true' : 'false');
-            });
-        }
-        var toggleReg2 = document.getElementById('toggleRegPassword2');
-        var regPass2 = document.getElementById('regPassword2');
-        if (toggleReg2 && regPass2) {
-            toggleReg2.addEventListener('click', function () {
-                var isPass = regPass2.type === 'password';
-                regPass2.type = isPass ? 'text' : 'password';
-                toggleReg2.setAttribute('aria-pressed', isPass ? 'true' : 'false');
-            });
-        }
-
-        // Validación inline (sin mover layout)
-        function validateField(input, errorEl, forceShow) {
-            var valid = input.checkValidity();
-            var showError = !valid && (forceShow || input.value.length > 0);
-            input.classList.toggle('is-invalid', showError);
-            input.classList.toggle('is-valid', valid && input.value.length > 0);
-            if (errorEl) errorEl.style.display = showError ? 'block' : 'none';
-            var field = input.closest('.login-field');
-            if (field) field.classList.toggle('has-error', showError);
-        }
-
-        var loginForm = document.getElementById('loginForm');
-        if (loginForm) {
-            ['email', 'password'].forEach(function (id) {
-                var input = document.getElementById(id);
-                var field = document.getElementById('field' + id.charAt(0).toUpperCase() + id.slice(1));
-                var errorEl = field && field.querySelector('.login-field-error');
-                if (input) {
-                    input.addEventListener('blur', function () { validateField(input, errorEl); });
-                    input.addEventListener('input', function () { validateField(input, errorEl); });
-                }
-            });
-            loginForm.addEventListener('submit', function (e) {
-                if (!loginForm.checkValidity()) {
-                    e.preventDefault();
-                    document.querySelectorAll('#fieldEmail, #fieldPassword').forEach(function (f) {
-                        var i = f.querySelector('.login-input');
-                        var err = f.querySelector('.login-field-error');
-                        if (i) validateField(i, err, true);
-                    });
-                } else {
-                    var btn = document.getElementById('loginSubmit');
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.querySelector('.btn-text').style.display = 'none';
-                        btn.querySelector('.spinner').style.display = 'block';
-                    }
-                }
-                loginForm.classList.add('was-validated');
-            }, false);
-        }
-
-        var recoverForm = document.getElementById('recoverForm');
-        if (recoverForm) {
-            var recoverEmail = document.getElementById('recoverEmail');
-            var fieldRecover = document.getElementById('fieldRecoverEmail');
-            var recoverError = fieldRecover && fieldRecover.querySelector('.login-field-error');
-            if (recoverEmail) {
-                recoverEmail.addEventListener('blur', function () { validateField(recoverEmail, recoverError); });
-                recoverEmail.addEventListener('input', function () { validateField(recoverEmail, recoverError); });
-            }
-            recoverForm.addEventListener('submit', function (e) {
-                if (!recoverForm.checkValidity()) {
-                        e.preventDefault();
-                    validateField(recoverEmail, recoverError, true);
-                } else {
-                    var btn = document.getElementById('recoverSubmit');
-                    if (btn) {
-                        btn.disabled = true;
-                        btn.querySelector('.btn-text').style.display = 'none';
-                        btn.querySelector('.spinner').style.display = 'block';
-                    }
-                }
-                recoverForm.classList.add('was-validated');
-            }, false);
-        }
-
-        // Validación formulario registro (contraseña fuerte + coincidencia)
-        var formRegistro = document.getElementById('formRegistro');
-        var regPasswordError = document.getElementById('regPasswordError');
-        if (formRegistro && regPass && regPass2) {
-            function validateRegPasswordStrength() {
-                var p = regPass.value;
-                if (!p.length) { regPass.setCustomValidity(''); if (regPasswordError) regPasswordError.style.display = 'none'; regPass.closest('.login-field').classList.remove('has-error'); return true; }
-                var hasUpper = /[A-Z]/.test(p);
-                var hasNumber = /\d/.test(p);
-                var hasSymbol = /[^A-Za-z0-9]/.test(p);
-                var valid = p.length >= 8 && hasUpper && hasNumber && hasSymbol;
-                var msg = valid ? '' : 'Use 8 caracteres como mínimo, una mayúscula, un número y un símbolo.';
-                regPass.setCustomValidity(msg);
-                var field = regPass.closest('.login-field');
-                if (field) field.classList.toggle('has-error', !valid);
-                if (regPasswordError) regPasswordError.style.display = valid ? 'none' : 'block';
-                return valid;
-            }
-            function checkRegPassMatch() {
-                var match = !regPass2.value || regPass.value === regPass2.value;
-                regPass2.setCustomValidity(match ? '' : 'Las contraseñas no coinciden');
-                var err = document.getElementById('regPassword2Error');
-                var field = regPass2.closest('.login-field');
-                if (field) {
-                    field.classList.toggle('has-error', !match && regPass2.value.length > 0);
-                    if (err) err.style.display = !match && regPass2.value.length > 0 ? 'block' : 'none';
-                }
-            }
-            regPass.addEventListener('input', function () { validateRegPasswordStrength(); checkRegPassMatch(); });
-            regPass2.addEventListener('input', checkRegPassMatch);
-            formRegistro.addEventListener('submit', function (e) {
-                validateRegPasswordStrength();
-                checkRegPassMatch();
-                if (!formRegistro.checkValidity()) {
-                    e.preventDefault();
-                    validateRegPasswordStrength();
-                    formRegistro.querySelectorAll('.login-field').forEach(function (f) {
-                        var i = f.querySelector('.login-input');
-                        var err = f.querySelector('.login-field-error');
-                        if (i) validateField(i, err, true);
-                    });
-                } else {
-                    var btn = document.getElementById('registerSubmit');
-                    if (btn) {
-                        btn.disabled = true;
-                        var txt = btn.querySelector('.btn-text');
-                        var sp = btn.querySelector('.spinner');
-                        if (txt) txt.style.display = 'none';
-                        if (sp) sp.style.display = 'block';
-                    }
-                }
-                formRegistro.classList.add('was-validated');
-                }, false);
-            }
-
-        // Dinamismo animaciones login: activar tras primer frame y loop fluido con requestAnimationFrame
-        (function animInit() {
-            var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            function ready() {
-                document.body.classList.add('login-anim-ready');
-                if (reducedMotion) {
-                    document.body.classList.add('login-anim-css');
-                    return;
-                }
-                var icons = document.querySelectorAll('.login-deco-brand .login-deco-icon');
-                var forms = document.querySelectorAll('.login-deco-form');
-                if (!icons.length && !forms.length) {
-                    document.body.classList.add('login-anim-css');
-                    return;
-                }
-                var start = performance.now();
-                function tick(now) {
-                    var t = (now - start) * 0.001;
-                    var i, phase, y;
-                    for (i = 0; i < icons.length; i++) {
-                        phase = i * 0.6;
-                        y = Math.sin(t * 0.5 + phase) * 5;
-                        icons[i].style.transform = 'translateY(' + y + 'px) translateZ(0)';
-                    }
-                    var fx, fy, op;
-                    for (i = 0; i < forms.length; i++) {
-                        phase = i * 0.9;
-                        fx = Math.sin(t * 0.35 + phase) * 3;
-                        fy = Math.cos(t * 0.3 + phase * 0.7) * -4;
-                        op = 0.13 + 0.03 * Math.sin(t * 0.25 + phase);
-                        forms[i].style.transform = 'translate(' + fx + 'px, ' + fy + 'px) translateZ(0)';
-                        forms[i].style.opacity = String(op);
-                    }
-                    requestAnimationFrame(tick);
-                }
-                requestAnimationFrame(tick);
-            }
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() { requestAnimationFrame(ready); });
-            } else {
-                requestAnimationFrame(ready);
-            }
-        })();
-        })();
-    </script>
+    <script src="{{ url_for('static', filename='js/login.js') }}" defer></script>
 </body>
 </html>
