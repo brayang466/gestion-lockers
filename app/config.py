@@ -5,7 +5,8 @@ from dotenv import load_dotenv
 
 # Cargar .env desde la raíz del proyecto (gestor_lockers/)
 _env_path = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(_env_path, override=True, encoding="utf-8")
+# override=False: variables ya definidas en el entorno (p. ej. PORT=5001) no las pisa el .env
+load_dotenv(_env_path, override=False, encoding="utf-8")
 # Por si se ejecuta desde otra carpeta, cargar también .env del cwd
 load_dotenv(override=False, encoding="utf-8")
 

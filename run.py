@@ -3,7 +3,11 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+# Si defines PORT en la consola (PORT=5001 python run.py), no debe pisarlo el .env
+_port_shell = os.environ.get("PORT")
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True, encoding="utf-8")
+if _port_shell is not None:
+    os.environ["PORT"] = _port_shell
 
 from app import create_app
 app = create_app()
