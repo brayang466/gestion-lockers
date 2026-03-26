@@ -14,6 +14,20 @@
                         <span class="modulo-text"><span class="modulo-titulo">Dashboard</span></span>
                     </a>
                 </li>
+
+                {% if session.get('user_rol') in ['superadmin', 'admin'] %}
+                <li>
+                    <a
+                        href="http://192.168.20.177:8000/site.html"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="modulo-link"
+                    >
+                        {{ module_icon('archive') }}
+                        <span class="modulo-text"><span class="modulo-titulo">Suite Principal</span></span>
+                    </a>
+                </li>
+                {% endif %}
             </ul>
         </nav>
         <nav class="sidebar-section">
