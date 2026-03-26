@@ -477,6 +477,12 @@ body.login-page {
   display: block;
 }
 
+[data-theme="dark"] .login-site-redirect,
+[data-theme="light"] .login-site-redirect {
+  /* Segundo botón (redirección) para no solapar con el toggle de tema */
+  right: 5.5rem;
+}
+
 /* Tarjeta glass */
 .login-card-wrap {
   width: 100%;

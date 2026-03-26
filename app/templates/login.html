@@ -36,6 +36,21 @@
         </svg>
     </button>
 
+    <a
+        class="login-theme-toggle login-site-redirect"
+        href="http://192.168.20.177:8000/site.html"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Abrir sitio externo"
+        title="Abrir sitio externo"
+    >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 21V7l7-4 7 4v14"/>
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 21v-6h6v6"/>
+        </svg>
+    </a>
+
     <div class="login-shell">
         <aside class="login-aside" aria-label="Presentación">
             <div class="login-aside__inner">
@@ -75,13 +90,13 @@
                     </div>
 
                     <div id="loginFlashContainer">
-                        {% with messages = get_flashed_messages(with_categories=true) %}
-                            {% if messages %}
-                                {% for category, msg in messages %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, msg in messages %}
                                     <div class="login-flash {{ 'error' if category == 'error' else 'success' }}" role="alert">{{ msg }}</div>
-                                {% endfor %}
-                            {% endif %}
-                        {% endwith %}
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
                     </div>
 
                     <div class="login-views">
@@ -221,10 +236,10 @@
                             <p class="login-back">
                                 <a href="#" id="showLoginFromRegister">← Ya tengo cuenta, iniciar sesión</a>
                             </p>
-                        </div>
-                    </div>
                 </div>
-            </div>
+                </div>
+                </div>
+        </div>
         </main>
     </div>
 
