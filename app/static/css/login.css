@@ -1032,6 +1032,221 @@ body.login-page {
   text-decoration: underline;
 }
 
+/* ========== Acceso integrado (perfiles estilo Netflix) ========== */
+.login-integrado-page {
+  padding-bottom: 3.5rem;
+}
+
+.integrado-main {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.integrado-card {
+  width: 100%;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2rem 1.75rem 1.75rem;
+  background: var(--lb-glass-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--lb-glass-border);
+  border-radius: var(--lb-radius-lg);
+  box-shadow: var(--lb-shadow-card);
+}
+
+.integrado-brand {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.integrado-logo {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 0.75rem;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--lb-glass-highlight);
+  border: 1px solid var(--lb-glass-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.integrado-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.integrado-badge {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lb-text-muted);
+}
+
+.integrado-title {
+  margin: 0 0 0.35rem;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--lb-text);
+}
+
+.integrado-sub {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--lb-text-muted);
+}
+
+.integrado-form {
+  margin-top: 1.25rem;
+}
+
+.integrado-profiles-fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.integrado-legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.integrado-profiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 1rem 1.25rem;
+  justify-content: center;
+  margin-bottom: 1.75rem;
+}
+
+.integrado-profile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  padding: 0.5rem 0.35rem 0.65rem;
+  border-radius: var(--lb-radius);
+  border: 2px solid transparent;
+  background: transparent;
+  transition: border-color var(--lb-transition), background var(--lb-transition),
+    transform var(--lb-transition), box-shadow var(--lb-transition);
+}
+
+.integrado-profile:hover {
+  background: var(--lb-glass-highlight);
+}
+
+.integrado-profile.is-selected {
+  border-color: var(--lb-red);
+  box-shadow: 0 0 0 1px var(--lb-red-glow), 0 12px 28px -12px rgba(0, 0, 0, 0.35);
+  background: var(--lb-glass-highlight);
+}
+
+.integrado-profile:focus-within {
+  outline: 2px solid var(--lb-red);
+  outline-offset: 2px;
+}
+
+.integrado-profile input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.integrado-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: linear-gradient(
+    145deg,
+    var(--lb-navy-700) 0%,
+    var(--lb-navy-800) 45%,
+    var(--lb-red-deep) 100%
+  );
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.45);
+  transition: transform var(--lb-transition), border-color var(--lb-transition);
+}
+
+.integrado-profile:hover .integrado-avatar,
+.integrado-profile.is-selected .integrado-avatar {
+  transform: scale(1.04);
+  border-color: rgba(220, 38, 38, 0.45);
+}
+
+.integrado-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--lb-text);
+  line-height: 1.25;
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integrado-password-block {
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.integrado-password-block .login-submit {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.integrado-empty {
+  text-align: center;
+  color: var(--lb-text-muted);
+  margin: 1.5rem 0;
+}
+
+.integrado-alt {
+  text-align: center;
+  margin: 1.25rem 0 0;
+  font-size: 0.875rem;
+}
+
+.integrado-alt a {
+  color: var(--lb-red);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.integrado-alt a:hover {
+  text-decoration: underline;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .login-bg,
@@ -1042,6 +1257,14 @@ body.login-page {
   .login-aside__logo,
   .login-logo-compact {
     animation: none !important;
+  }
+  .integrado-profile,
+  .integrado-avatar {
+    transition: none !important;
+  }
+  .integrado-profile:hover .integrado-avatar,
+  .integrado-profile.is-selected .integrado-avatar {
+    transform: none !important;
   }
   .login-aside__inner,
   .login-card-wrap {

@@ -1,0 +1,157 @@
+{% macro iniciales(nombre) -%}
+{%- set raw = ((nombre or '')|trim) -%}
+{%- set p = raw.split() -%}
+{%- if p|length >= 2 and p[0] and p[1] -%}
+{{ (p[0][0] ~ p[1][0])|upper }}
+{%- elif raw|length >= 2 -%}
+{{ raw[:2]|upper }}
+{%- elif raw -%}
+{{ raw[0]|upper }}
+{%- else -%}
+?
+{%- endif -%}
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#050b14">
+    <meta name="color-scheme" content="dark light">
+    <title>Acceso integrado — LockerBeef</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+    <script>
+      (function(){try{var k='lockerbeef-login-theme',t=localStorage.getItem(k);if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+    </script>
+</head>
+<body class="login-page login-integrado-page" data-show-register="0">
+    <a class="login-skip" href="#integradoMain">Saltar al contenido</a>
+
+    <div class="login-bg" aria-hidden="true">
+        <div class="login-bg__mesh"></div>
+        <div class="login-bg__grid"></div>
+        <div class="login-bg__particles">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+        </div>
+    </div>
+
+    <button type="button" class="login-theme-toggle" id="themeToggle" aria-label="Activar modo claro" title="Modo claro">
+        <svg class="icon-moon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+        <svg class="icon-sun" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+        </svg>
+    </button>
+
+    <main class="integrado-main" id="integradoMain">
+        <div class="integrado-card">
+            <div class="integrado-brand">
+                <div class="integrado-logo" aria-hidden="true">
+                    <img src="{{ url_for('static', filename='dashboard/logo.png') }}" alt="" onerror="this.style.display='none';">
+                </div>
+                <p class="integrado-badge">COLBEEF.SAS · LockerBeef</p>
+                <h1 class="integrado-title">¿Quién va a continuar?</h1>
+                <p class="integrado-sub">Elige tu perfil e ingresa tu contraseña.</p>
+            </div>
+
+            <div id="loginFlashContainer">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, msg in messages %}
+                            <div class="login-flash {{ 'error' if category == 'error' else 'success' }}" role="alert">{{ msg }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+            </div>
+
+            {% if palabra_clave_hint|default('') %}
+            <div class="login-hint" role="status">
+                <strong>Tu palabra clave para recordar:</strong> {{ palabra_clave_hint }}
+            </div>
+            {% endif %}
+
+            {% if usuarios %}
+            <form method="post" action="{{ url_for('main.acceso_integrado') }}" class="integrado-form" id="integradoForm" novalidate>
+                <fieldset class="integrado-profiles-fieldset">
+                    <legend class="integrado-legend">Perfiles</legend>
+                    <div class="integrado-profiles" role="radiogroup" aria-label="Seleccionar usuario">
+                        {% for u in usuarios %}
+                        <label class="integrado-profile {% if selected_user_id|default(none) == u.id %}is-selected{% endif %}">
+                            <input type="radio" name="user_id" value="{{ u.id }}" required
+                                {% if selected_user_id|default(none) == u.id %}checked{% endif %}>
+                            <span class="integrado-avatar" aria-hidden="true">{{ iniciales(u.nombre) }}</span>
+                            <span class="integrado-name">{{ u.nombre }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+
+                <div class="integrado-password-block">
+                    <div class="login-field login-field-float" id="fieldPassword">
+                        <div class="login-password-wrap">
+                            <input type="password" id="password" name="password" class="login-input" required
+                                autocomplete="current-password" placeholder=" "
+                                aria-describedby="passwordError">
+                            <label class="login-float-label" for="password">Contraseña</label>
+                            <button type="button" class="login-toggle-password" id="togglePassword" aria-label="Mostrar u ocultar contraseña" aria-pressed="false">
+                                <svg class="icon-eye" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                                <svg class="icon-eye-off" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878a4.501 4.501 0 106.262 6.262M4.5 12a7.5 7.5 0 0012 4.5"/></svg>
+                            </button>
+                        </div>
+                        <span class="login-field-error" id="passwordError" role="alert">La contraseña es obligatoria.</span>
+                    </div>
+                    <button type="submit" class="login-submit" id="integradoSubmit">
+                        <span class="btn-text">Continuar</span>
+                        <span class="spinner" style="display: none;" aria-hidden="true"></span>
+                    </button>
+                </div>
+            </form>
+            {% else %}
+            <p class="integrado-empty">No hay usuarios activos disponibles.</p>
+            {% endif %}
+
+            <p class="integrado-alt">
+                <a href="{{ url_for('main.login') }}">Acceso con correo electrónico</a>
+            </p>
+        </div>
+    </main>
+
+    <footer class="login-footer" role="contentinfo">&copy; {{ current_year }} LockerBeef. Colbeef S.A.S Todos los derechos reservados. Programado por Brayan Gomez</footer>
+
+    <script src="{{ url_for('static', filename='js/login.js') }}" defer></script>
+    <script>
+    (function () {
+      function syncSelected() {
+        document.querySelectorAll(".integrado-profile").forEach(function (el) {
+          var input = el.querySelector('input[type="radio"]');
+          el.classList.toggle("is-selected", input && input.checked);
+        });
+      }
+      document.querySelectorAll('input[name="user_id"]').forEach(function (r) {
+        r.addEventListener("change", syncSelected);
+      });
+      syncSelected();
+
+      var form = document.getElementById("integradoForm");
+      if (form) {
+        form.addEventListener("submit", function () {
+          var btn = document.getElementById("integradoSubmit");
+          if (btn && form.checkValidity()) {
+            btn.disabled = true;
+            var txt = btn.querySelector(".btn-text");
+            var sp = btn.querySelector(".spinner");
+            if (txt) txt.style.display = "none";
+            if (sp) sp.style.display = "block";
+          }
+        });
+      }
+    })();
+    </script>
+</body>
+</html>

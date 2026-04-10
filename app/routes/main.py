@@ -573,6 +573,69 @@ def login():
     )
 
 
+@bp.route("/acceso-integrado", methods=["GET", "POST"])
+def acceso_integrado():
+    """Entrada desde otro aplicativo: perfiles + contraseña (misma validación que /login)."""
+    if session.get("user_id"):
+        return redirect(url_for("main.dashboard"))
+
+    def _usuarios_activos():
+        return (
+            Usuario.query.filter_by(activo=True)
+            .order_by(Usuario.nombre.asc())
+            .all()
+        )
+
+    if request.method == "POST":
+        try:
+            user_id = int(request.form.get("user_id") or 0)
+        except (TypeError, ValueError):
+            user_id = 0
+        password = request.form.get("password") or ""
+        usuarios = _usuarios_activos()
+
+        if not user_id or not password:
+            flash("Selecciona un perfil e ingresa tu contraseña.", "error")
+            return render_template(
+                "login_integrado.html",
+                usuarios=usuarios,
+                selected_user_id=user_id if user_id else None,
+            )
+
+        user = Usuario.query.filter_by(id=user_id, activo=True).first()
+        if not user or not user.password_hash:
+            flash("Perfil o contraseña incorrectos.", "error")
+            return render_template(
+                "login_integrado.html",
+                usuarios=usuarios,
+                selected_user_id=user_id,
+            )
+
+        if not check_password_hash(user.password_hash, password):
+            flash("Contraseña incorrecta.", "error")
+            palabra_clave_hint = (
+                (user.palabra_clave or "").strip()
+                if getattr(user, "palabra_clave", None)
+                else ""
+            )
+            return render_template(
+                "login_integrado.html",
+                usuarios=usuarios,
+                selected_user_id=user_id,
+                palabra_clave_hint=palabra_clave_hint,
+            )
+
+        session["user_id"] = user.id
+        session["user_nombre"] = user.nombre or user.email
+        session["user_rol"] = (user.rol or "usuario").strip().lower()
+        session["user_area"] = (user.area or "").strip()
+        session.pop("current_area", None)
+        return redirect(url_for("main.areas"))
+
+    usuarios = _usuarios_activos()
+    return render_template("login_integrado.html", usuarios=usuarios)
+
+
 @bp.route("/logout")
 def logout():
     session.clear()
