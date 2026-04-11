@@ -538,6 +538,7 @@ def login():
         session["user_rol"] = (user.rol or "usuario").strip().lower()
         session["user_area"] = (user.area or "").strip()
         session.pop("current_area", None)
+        session.pop("logout_to_integrado", None)
         if recordarme:
             session.permanent = True
         resp = redirect(url_for("main.areas"))
@@ -630,6 +631,7 @@ def acceso_integrado():
         session["user_rol"] = (user.rol or "usuario").strip().lower()
         session["user_area"] = (user.area or "").strip()
         session.pop("current_area", None)
+        session["logout_to_integrado"] = True
         return redirect(url_for("main.areas"))
 
     usuarios = _usuarios_activos()
@@ -638,7 +640,10 @@ def acceso_integrado():
 
 @bp.route("/logout")
 def logout():
+    to_integrado = bool(session.get("logout_to_integrado"))
     session.clear()
+    if to_integrado:
+        return redirect(url_for("main.acceso_integrado"))
     return redirect(url_for("main.login"))
 
 
