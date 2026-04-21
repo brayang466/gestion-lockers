@@ -257,6 +257,10 @@ def _parse_date(s):
     except (ValueError, TypeError):
         return None
 
+
+# Opciones estándar para campos de talla (formularios de encabezado y módulos)
+TALLAS_SELECT_OPCIONES = ["", "M", "L", "S", "XXL", "XL", "XXXL", "XS", "S-M-L-XL"]
+
 MODULOS_CONFIG = {
     "base-lockers": {
         "model": BaseLockers,
@@ -320,7 +324,7 @@ MODULOS_CONFIG = {
             {"name": "codigo", "label": "Código", "type": "text"},
             {"name": "cantidad", "label": "Cantidad", "type": "number"},
             {"name": "area_uso", "label": "Área uso", "type": "text"},
-            {"name": "talla", "label": "Talla", "type": "text"},
+            {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "estado", "label": "Estado", "type": "select", "options": ["ASIGNADA", "DISPONIBLE", "NO EXISTE"]},
         ],
         "date_fields": [],
@@ -350,8 +354,6 @@ MODULOS_CONFIG = {
         "columnas": [
             {"key": "operario", "label": "Nombre"},
             {"key": "identificacion", "label": "Documento"},
-            {"key": "email", "label": "Email"},
-            {"key": "cargo", "label": "Cargo"},
             {"key": "area", "label": "Área"},
             {"key": "area_lockers", "label": "Área Lockers"},
             {"key": "estado", "label": "Estado"},
@@ -359,11 +361,8 @@ MODULOS_CONFIG = {
         "form_fields": [
             {"name": "operario", "label": "Nombre", "type": "text", "required": True},
             {"name": "identificacion", "label": "Documento", "type": "text", "required": True},
-            {"name": "email", "label": "Email", "type": "text"},
-            {"name": "telefono", "label": "Teléfono", "type": "text"},
-            {"name": "cargo", "label": "Cargo", "type": "text"},
             {"name": "area", "label": "Área", "type": "text"},
-            {"name": "talla_operarios", "label": "Talla", "type": "text"},
+            {"name": "talla_operarios", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
             {"name": "codigo_lockets", "label": "Código lockers", "type": "text"},
             {"name": "codigo_dotacion", "label": "Código dotación", "type": "text"},
@@ -398,8 +397,9 @@ MODULOS_CONFIG = {
         "icon": "clipboard-check",
         "area_key": "area",
         "solo_con_asignacion": True,
+        "no_crear": True,
         "columnas": [
-            {"key": "id_asignaciones", "label": "ID"},
+            {"key": "identificacion", "label": "Identificación"},
             {"key": "operario", "label": "Operario"},
             {"key": "codigo_dotacion", "label": "Cód. Dotación"},
             {"key": "codigo_lockets", "label": "Cód. Lockers"},
@@ -407,17 +407,16 @@ MODULOS_CONFIG = {
             {"key": "estado", "label": "Estado"},
         ],
         "form_fields": [
-            {"name": "id_asignaciones", "label": "ID Asignaciones", "type": "text"},
             {"name": "codigo_dotacion", "label": "Código dotación", "type": "text"},
             {"name": "fecha_asignacion", "label": "Fecha asignación", "type": "date"},
             {"name": "fecha_entrega", "label": "Fecha entrega", "type": "date"},
             {"name": "operario", "label": "Operario", "type": "text"},
+            {"name": "identificacion", "label": "Identificación", "type": "text", "required": True},
             {"name": "codigo_lockets", "label": "Código lockers", "type": "text"},
-            {"name": "identificacion", "label": "Identificación", "type": "text"},
             {"name": "codigo_seca_botas", "label": "Código seca botas", "type": "text"},
             {"name": "area", "label": "Área", "type": "text"},
-            {"name": "talla_operarios", "label": "Talla operarios", "type": "text"},
-            {"name": "talla_dotacion", "label": "Talla dotación", "type": "text"},
+            {"name": "talla_operarios", "label": "Talla operarios", "type": "select", "options": TALLAS_SELECT_OPCIONES},
+            {"name": "talla_dotacion", "label": "Talla dotación", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "area_lockers", "label": "Área lockers", "type": "text"},
             {"name": "estado", "label": "Estado", "type": "select", "options": ["ACTIVO", "INACTIVO", "PENDIENTE"]},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
@@ -441,8 +440,8 @@ MODULOS_CONFIG = {
             {"name": "operario", "label": "Operario", "type": "text"},
             {"name": "codigo_lockets", "label": "Código lockers", "type": "text"},
             {"name": "area", "label": "Área", "type": "text"},
-            {"name": "talla_operarios", "label": "Talla operarios", "type": "text"},
-            {"name": "talla_dotacion", "label": "Talla dotación", "type": "text"},
+            {"name": "talla_operarios", "label": "Talla operarios", "type": "select", "options": TALLAS_SELECT_OPCIONES},
+            {"name": "talla_dotacion", "label": "Talla dotación", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "area_lockers", "label": "Área lockers", "type": "text"},
         ],
         "date_fields": ["fecha_retiro"],
@@ -1136,6 +1135,9 @@ def _registro_form_view(modulo_id):
             if not codigo:
                 flash("El código es obligatorio.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
+            if not talla:
+                flash("Seleccione una talla.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
             estado = _normalize_estado_base_dotaciones(estado)
             obj = BaseDotaciones(codigo=codigo, cantidad=cantidad, talla=talla, estado=estado, area_uso=current_area)
             db.session.add(obj)
@@ -1148,15 +1150,26 @@ def _registro_form_view(modulo_id):
             if not nombre or not documento:
                 flash("Nombre y documento son obligatorios.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Registro de Personal", form_fields=_FORM_REGISTRO_PERSONAL, can_edit=can_edit)
+            talla_val = (request.form.get("talla") or "").strip()
+            if not talla_val:
+                flash("Seleccione una talla.", "error")
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Registro de Personal",
+                    form_fields=_FORM_REGISTRO_PERSONAL,
+                    can_edit=can_edit,
+                    default_area=current_area,
+                )
             obj = RegistroAsignaciones(
                 id_asignaciones=_get_next_id_asignaciones(),
                 operario=nombre,
                 identificacion=documento,
-                email=(request.form.get("email") or "").strip(),
-                telefono=(request.form.get("telefono") or "").strip(),
-                cargo=(request.form.get("cargo") or "").strip(),
+                email="",
+                telefono="",
+                cargo="",
                 area=current_area,
-                talla_operarios=(request.form.get("talla") or "").strip(),
+                talla_operarios=talla_val,
                 area_lockers=(request.form.get("area_lockers") or "").strip(),
                 estado="Activo",
                 fecha_asignacion=datetime.utcnow(),
@@ -1195,17 +1208,14 @@ def _registro_form_view(modulo_id):
 _FORM_INGRESO_DOTACION = [
     {"name": "codigo", "label": "Código", "type": "text", "required": True},
     {"name": "cantidad", "label": "Cantidad", "type": "number"},
-    {"name": "talla", "label": "Talla", "type": "text"},
+    {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES, "required": True},
     {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADA", "NO EXISTE"]},
 ]
 _FORM_REGISTRO_PERSONAL = [
     {"name": "nombre", "label": "Nombre", "type": "text", "required": True},
     {"name": "documento", "label": "Documento", "type": "text", "required": True},
-    {"name": "email", "label": "Email", "type": "email"},
-    {"name": "telefono", "label": "Teléfono", "type": "text"},
-    {"name": "cargo", "label": "Cargo", "type": "text"},
     {"name": "area", "label": "Área", "type": "text"},
-    {"name": "talla", "label": "Talla", "type": "text"},
+    {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES, "required": True},
     {"name": "area_lockers", "label": "Área Lockers", "type": "select", "options": ["", "VESTIER HOMBRES", "VESTIER MUJERES", "ADMINISTRATIVO"]},
 ]
 _FORM_INGRESO_LOCKERS = [
@@ -1342,6 +1352,10 @@ def modulo(modulo_id):
                 obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
             # Validar Cod. Dotación y Cod. Lockers contra Dotaciones/Lockers Disponibles (Registro Asignaciones / Personal)
             if Model == RegistroAsignaciones:
+                if not (getattr(obj, "identificacion", None) or "").strip():
+                    flash("La identificación del operario es obligatoria.", "error")
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
                 cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
                 cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
                 reg_area = (getattr(obj, "area", None) or "").strip() or current_area
@@ -1502,7 +1516,7 @@ def modulo(modulo_id):
 
     # Orden general de módulos por código (menor -> mayor) cuando exista un campo de código.
     # Si no hay código aplicable, mantiene orden por id descendente.
-    code_order_fields = ("codigo", "id_asignaciones", "codigo_dotacion", "codigo_lockets")
+    code_order_fields = ("codigo", "identificacion", "id_asignaciones", "codigo_dotacion", "codigo_lockets")
     order_by_code = None
     for field_name in code_order_fields:
         if hasattr(Model, field_name):
@@ -1535,9 +1549,6 @@ def modulo(modulo_id):
         d = {"id": row.id}
         for col in columnas:
             val = getattr(row, col["key"], None)
-            if col["key"] == "id_asignaciones" and Model == RegistroAsignaciones:
-                if not (val or "").strip():
-                    val = "ASG-{:03d}".format(row.id)
             if col["key"] == "subarea" and (Model == BaseLockers or Model == LockerDisponibles):
                 area_val = (getattr(row, "area", None) or "") or ""
                 sub_val = (val or "") or ""

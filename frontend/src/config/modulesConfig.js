@@ -1,7 +1,9 @@
 /**
  * Configuración de cada módulo: API path, columnas de la tabla y campos del formulario.
- * type: 'text' | 'number' | 'date' | 'textarea'
+ * type: 'text' | 'number' | 'date' | 'textarea' | 'select' (con `options`)
  */
+export const TALLA_SELECT_OPTIONS = ['', 'M', 'L', 'S', 'XXL', 'XL', 'XXXL', 'XS', 'S-M-L-XL']
+
 const MODULES_ORDER = [
   'dotaciones-disponibles',
   'locker-disponibles',
@@ -71,7 +73,7 @@ const MODULES_RAW = [
       { name: 'codigo', label: 'Código', type: 'text' },
       { name: 'cantidad', label: 'Cantidad', type: 'number' },
       { name: 'area_uso', label: 'Área uso', type: 'text' },
-      { name: 'talla', label: 'Talla', type: 'text' },
+      { name: 'talla', label: 'Talla', type: 'select', options: TALLA_SELECT_OPTIONS },
       { name: 'estado', label: 'Estado', type: 'text' },
     ],
   },
@@ -87,7 +89,7 @@ const MODULES_RAW = [
     ],
     formFields: [
       { name: 'codigo', label: 'Código', type: 'text' },
-      { name: 'talla', label: 'Talla', type: 'text' },
+      { name: 'talla', label: 'Talla', type: 'select', options: TALLA_SELECT_OPTIONS },
       { name: 'cantidad', label: 'Cantidad', type: 'number' },
     ],
   },
@@ -100,18 +102,14 @@ const MODULES_RAW = [
       { key: 'id_personal', label: 'ID Personal' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'documento', label: 'Documento' },
-      { key: 'cargo', label: 'Cargo' },
       { key: 'area', label: 'Área' },
     ],
     formFields: [
       { name: 'id_personal', label: 'ID Personal', type: 'text' },
       { name: 'nombre', label: 'Nombre', type: 'text' },
       { name: 'documento', label: 'Documento', type: 'text' },
-      { name: 'email', label: 'Email', type: 'text' },
-      { name: 'telefono', label: 'Teléfono', type: 'text' },
-      { name: 'cargo', label: 'Cargo', type: 'text' },
       { name: 'area', label: 'Área', type: 'text' },
-      { name: 'talla', label: 'Talla', type: 'text' },
+      { name: 'talla', label: 'Talla', type: 'select', options: TALLA_SELECT_OPTIONS },
       { name: 'area_lockers', label: 'Área Lockers', type: 'text' },
       { name: 'estado', label: 'Estado', type: 'text' },
       { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
@@ -147,8 +145,9 @@ const MODULES_RAW = [
     title: 'Registro de Asignaciones',
     icon: '🔗',
     apiPath: '/api/registro-asignaciones',
+    hideCreate: true,
     columns: [
-      { key: 'id_asignaciones', label: 'ID' },
+      { key: 'identificacion', label: 'Identificación' },
       { key: 'operario', label: 'Operario' },
       { key: 'codigo_dotacion', label: 'Cód. Dotación' },
       { key: 'codigo_lockets', label: 'Cód. Lockers' },
@@ -156,19 +155,18 @@ const MODULES_RAW = [
       { key: 'estado', label: 'Estado' },
     ],
     formFields: [
-      { name: 'id_asignaciones', label: 'ID Asignaciones', type: 'text' },
       { name: 'codigo_dotacion', label: 'Código dotación', type: 'text' },
       { name: 'fecha_asignacion', label: 'Fecha asignación', type: 'date' },
       { name: 'fecha_entrega', label: 'Fecha entrega', type: 'date' },
       { name: 'operario', label: 'Operario', type: 'text' },
+      { name: 'identificacion', label: 'Identificación', type: 'text', required: true },
       { name: 'codigo_lockets', label: 'Código lockers', type: 'text' },
-      { name: 'identificacion', label: 'Identificación', type: 'text' },
       { name: 'codigo_seca_botas', label: 'Código seca botas', type: 'text' },
       { name: 'area', label: 'Área', type: 'text' },
-      { name: 'talla_operarios', label: 'Talla operarios', type: 'text' },
-      { name: 'talla_dotacion', label: 'Talla dotación', type: 'text' },
+      { name: 'talla_operarios', label: 'Talla operarios', type: 'select', options: TALLA_SELECT_OPTIONS },
+      { name: 'talla_dotacion', label: 'Talla dotación', type: 'select', options: TALLA_SELECT_OPTIONS },
       { name: 'area_lockers', label: 'Área lockers', type: 'text' },
-      { name: 'estado', label: 'Estado', type: 'text' },
+      { name: 'estado', label: 'Estado', type: 'select', options: ['', 'ACTIVO', 'INACTIVO', 'PENDIENTE'] },
       { name: 'observaciones', label: 'Observaciones', type: 'textarea' },
     ],
   },
@@ -189,8 +187,8 @@ const MODULES_RAW = [
       { name: 'operario', label: 'Operario', type: 'text' },
       { name: 'codigo_lockets', label: 'Código lockers', type: 'text' },
       { name: 'area', label: 'Área', type: 'text' },
-      { name: 'talla_operarios', label: 'Talla operarios', type: 'text' },
-      { name: 'talla_dotacion', label: 'Talla dotación', type: 'text' },
+      { name: 'talla_operarios', label: 'Talla operarios', type: 'select', options: TALLA_SELECT_OPTIONS },
+      { name: 'talla_dotacion', label: 'Talla dotación', type: 'select', options: TALLA_SELECT_OPTIONS },
       { name: 'area_lockers', label: 'Área lockers', type: 'text' },
     ],
   },

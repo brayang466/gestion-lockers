@@ -82,7 +82,7 @@
         {% elif f.type == 'select' and f.options is defined %}
         <select id="f_{{ f.name }}" name="{{ f.name }}" class="{% if f.name == 'estado' %}estado-select{% endif %}" {% if f.required %}required{% endif %}>
           {% for opt in f.options %}
-          <option value="{{ opt }}" {% if edit_data.get(f.name, '') == opt %}selected{% endif %}>{{ opt }}</option>
+          <option value="{{ opt }}" {% if edit_data.get(f.name, '') == opt %}selected{% endif %}>{% if opt == '' %}Seleccione…{% else %}{{ opt }}{% endif %}</option>
           {% endfor %}
         </select>
         {% elif f.name == 'codigo_dotacion' and opciones_dotacion is defined %}

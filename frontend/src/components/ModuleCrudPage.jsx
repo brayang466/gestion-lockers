@@ -29,7 +29,7 @@ export default function ModuleCrudPage() {
     )
   }
 
-  const { title, apiPath, columns, formFields } = config
+  const { title, apiPath, columns, formFields, hideCreate = false } = config
 
   const fetchList = () => {
     setLoading(true)
@@ -163,7 +163,9 @@ export default function ModuleCrudPage() {
                 {items.length === 0 ? (
                   <tr>
                     <td colSpan={columns.length + 1} className="px-4 py-8 text-center text-slate-500">
-                      No hay registros. Use &quot;Crear&quot; para agregar uno.
+                      {hideCreate
+                        ? 'No hay registros.'
+                        : 'No hay registros. Use "Crear" para agregar uno.'}
                     </td>
                   </tr>
                 ) : (
@@ -232,6 +234,19 @@ export default function ModuleCrudPage() {
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                       rows={3}
                     />
+                  ) : f.type === 'select' && Array.isArray(f.options) ? (
+                    <select
+                      value={formData[f.name] ?? ''}
+                      onChange={(e) => setFormData((d) => ({ ...d, [f.name]: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
+                      required={f.required}
+                    >
+                      {f.options.map((opt) => (
+                        <option key={opt || '__empty'} value={opt}>
+                          {opt === '' ? 'Seleccione…' : opt}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <input
                       type={f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : 'text'}
