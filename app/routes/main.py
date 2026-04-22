@@ -123,6 +123,41 @@ def _normalize_estado_base_dotaciones(estado):
     return s
 
 
+def _norm_codigo_cmp(codigo):
+    """Trim + minúsculas para detectar códigos duplicados."""
+    return (codigo or "").strip().lower()
+
+
+def _codigo_base_dotaciones_duplicado(codigo, exclude_id=None):
+    c = _norm_codigo_cmp(codigo)
+    if not c:
+        return False
+    q = BaseDotaciones.query.filter(db.func.lower(db.func.trim(BaseDotaciones.codigo)) == c)
+    if exclude_id is not None:
+        q = q.filter(BaseDotaciones.id != exclude_id)
+    return q.first() is not None
+
+
+def _codigo_base_lockers_duplicado(codigo, exclude_id=None):
+    c = _norm_codigo_cmp(codigo)
+    if not c:
+        return False
+    q = BaseLockers.query.filter(db.func.lower(db.func.trim(BaseLockers.codigo)) == c)
+    if exclude_id is not None:
+        q = q.filter(BaseLockers.id != exclude_id)
+    return q.first() is not None
+
+
+def _codigo_locker_disponibles_duplicado(codigo, exclude_id=None):
+    c = _norm_codigo_cmp(codigo)
+    if not c:
+        return False
+    q = LockerDisponibles.query.filter(db.func.lower(db.func.trim(LockerDisponibles.codigo)) == c)
+    if exclude_id is not None:
+        q = q.filter(LockerDisponibles.id != exclude_id)
+    return q.first() is not None
+
+
 def _get_next_id_asignaciones():
     """Devuelve el siguiente ID en formato ASG-000, ASG-001, ... para RegistroAsignaciones. Regla: al insertar aplicar este formato."""
     rows = (
@@ -1131,15 +1166,21 @@ def _registro_form_view(modulo_id):
             codigo = (request.form.get("codigo") or "").strip()
             cantidad = request.form.get("cantidad", type=int) or 0
             talla = (request.form.get("talla") or "").strip()
-            estado = (request.form.get("estado") or "disponible").strip()
+            area_uso = (request.form.get("area") or "").strip()
             if not codigo:
                 flash("El código es obligatorio.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
             if not talla:
                 flash("Seleccione una talla.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
-            estado = _normalize_estado_base_dotaciones(estado)
-            obj = BaseDotaciones(codigo=codigo, cantidad=cantidad, talla=talla, estado=estado, area_uso=current_area)
+            if area_uso not in INGRESO_DOTACION_AREA_OPCIONES:
+                flash("Seleccione un área válida.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
+            if _codigo_base_dotaciones_duplicado(codigo):
+                flash("El código ya está registrado en Base de Dotaciones.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
+            estado = _normalize_estado_base_dotaciones("DISPONIBLE")
+            obj = BaseDotaciones(codigo=codigo, cantidad=cantidad, talla=talla, estado=estado, area_uso=area_uso)
             db.session.add(obj)
             db.session.commit()
             flash("Dotación registrada en Base de Dotaciones.", "success")
@@ -1188,6 +1229,12 @@ def _registro_form_view(modulo_id):
             if not codigo:
                 flash("El código es obligatorio.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
+            if _codigo_base_lockers_duplicado(codigo):
+                flash("El código ya está registrado en Base de Lockers.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
+            if cantidad > 1:
+                flash("Cada código debe ser único. Indique cantidad 1 o registre otro código en un envío aparte.", "error")
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
             estado = _normalize_estado_base_lockers((request.form.get("estado") or "disponible").strip())
             for _ in range(cantidad):
                 obj = BaseLockers(codigo=codigo, area=area, subarea="", area_lockers=area_lockers, estado=estado)
@@ -1204,12 +1251,41 @@ def _registro_form_view(modulo_id):
     return None
 
 
+# Áreas operativas para el formulario de ingreso de dotación (encabezado / registro_form).
+INGRESO_DOTACION_AREA_OPCIONES = frozenset(
+    (
+        "PROCESO",
+        "VISITAS",
+        "MTTO",
+        "PLANTA EMERGENCIA",
+        "EXTERNOS",
+        "PIELES",
+        "SUBPRODUCTOS",
+    )
+)
+_INGRESO_DOTACION_AREA_OPCIONES_ORDER = (
+    "PROCESO",
+    "VISITAS",
+    "MTTO",
+    "PLANTA EMERGENCIA",
+    "EXTERNOS",
+    "PIELES",
+    "SUBPRODUCTOS",
+)
+
 # Campos para los formularios de registro independientes (no almacenan en su tabla original)
 _FORM_INGRESO_DOTACION = [
     {"name": "codigo", "label": "Código", "type": "text", "required": True},
     {"name": "cantidad", "label": "Cantidad", "type": "number"},
     {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES, "required": True},
-    {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADA", "NO EXISTE"]},
+    {
+        "name": "area",
+        "label": "Área",
+        "type": "select",
+        "options": ["", *_INGRESO_DOTACION_AREA_OPCIONES_ORDER],
+        "required": True,
+    },
+    {"name": "estado", "label": "Estado", "type": "text", "readonly": True, "default": "Disponible"},
 ]
 _FORM_REGISTRO_PERSONAL = [
     {"name": "nombre", "label": "Nombre", "type": "text", "required": True},
@@ -1350,6 +1426,18 @@ def modulo(modulo_id):
                 obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
             if Model == BaseDotaciones and hasattr(obj, "estado"):
                 obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+            if Model == BaseDotaciones and hasattr(obj, "codigo") and _codigo_base_dotaciones_duplicado(getattr(obj, "codigo", None), exclude_id=obj.id):
+                flash("El código ya está registrado.", "error")
+                session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+            if Model == BaseLockers and hasattr(obj, "codigo") and _codigo_base_lockers_duplicado(getattr(obj, "codigo", None), exclude_id=obj.id):
+                flash("El código ya está registrado.", "error")
+                session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+            if Model == LockerDisponibles and hasattr(obj, "codigo") and _codigo_locker_disponibles_duplicado(getattr(obj, "codigo", None), exclude_id=obj.id):
+                flash("El código ya está registrado.", "error")
+                session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
             # Validar Cod. Dotación y Cod. Lockers contra Dotaciones/Lockers Disponibles (Registro Asignaciones / Personal)
             if Model == RegistroAsignaciones:
                 if not (getattr(obj, "identificacion", None) or "").strip():
@@ -1424,6 +1512,18 @@ def modulo(modulo_id):
             obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
         if Model == BaseDotaciones and hasattr(obj, "estado"):
             obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+        if Model == BaseDotaciones and hasattr(obj, "codigo") and _codigo_base_dotaciones_duplicado(getattr(obj, "codigo", None)):
+            flash("El código ya está registrado.", "error")
+            session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+            return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+        if Model == BaseLockers and hasattr(obj, "codigo") and _codigo_base_lockers_duplicado(getattr(obj, "codigo", None)):
+            flash("El código ya está registrado.", "error")
+            session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+            return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+        if Model == LockerDisponibles and hasattr(obj, "codigo") and _codigo_locker_disponibles_duplicado(getattr(obj, "codigo", None)):
+            flash("El código ya está registrado.", "error")
+            session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+            return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
         # Validar Cod. Dotación y Cod. Lockers al crear RegistroAsignaciones
         if Model == RegistroAsignaciones:
             cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
