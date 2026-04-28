@@ -6,7 +6,7 @@ Nombres canónicos (o alias que importar_todo.py reconoce automáticamente):
   personal_presupuestado.csv  ó  PERSONAL PRESUPUESTADO.csv
   dotaciones_disponibles.csv  ó  DOTACIONES DISPONIBLES.csv
   locker_disponibles.csv  ó  LOCKER DISPONIBLES.csv
-  registro_asignaciones.csv  ó  ASIGNACIONES.csv  ó  ASIGNACIONES ACTUALIZADO.csv
+  registro_asignaciones.csv  ó  ASIGNACIONES ACTUALIZADO.csv  ó  ASIGNACIONES.csv
   historial_retiros.csv  ó  RETIROS.csv
 Si existen ambos nombres, se usa primero el canónico (si tiene al menos 2 filas).
 

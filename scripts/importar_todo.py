@@ -26,7 +26,7 @@ ORDEN = [
     ("seca_botas_disponibles", ["seca_botas_disponibles.csv", "SECA BOTAS.csv"]),
     (
         "registro_asignaciones",
-        ["registro_asignaciones.csv", "ASIGNACIONES.csv", "ASIGNACIONES ACTUALIZADO.csv"],
+        ["registro_asignaciones.csv", "ASIGNACIONES ACTUALIZADO.csv", "ASIGNACIONES.csv"],
     ),
     ("historial_retiros", ["historial_retiros.csv", "RETIROS.csv"]),
 ]
