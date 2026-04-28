@@ -24,7 +24,10 @@ ORDEN = [
     ("dotaciones_disponibles", ["dotaciones_disponibles.csv", "DOTACIONES DISPONIBLES.csv"]),
     ("locker_disponibles", ["locker_disponibles.csv", "LOCKER DISPONIBLES.csv"]),
     ("seca_botas_disponibles", ["seca_botas_disponibles.csv", "SECA BOTAS.csv"]),
-    ("registro_asignaciones", ["registro_asignaciones.csv", "ASIGNACIONES.csv"]),
+    (
+        "registro_asignaciones",
+        ["registro_asignaciones.csv", "ASIGNACIONES.csv", "ASIGNACIONES ACTUALIZADO.csv"],
+    ),
     ("historial_retiros", ["historial_retiros.csv", "RETIROS.csv"]),
 ]
 
