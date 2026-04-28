@@ -483,6 +483,38 @@ body.login-page {
   right: 5.5rem;
 }
 
+.login-suite-back {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.5rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid var(--lb-glass-border);
+  background: var(--lb-glass-bg);
+  backdrop-filter: blur(16px);
+  color: var(--lb-text);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 0.9rem;
+  transition: transform var(--lb-transition), border-color var(--lb-transition), box-shadow var(--lb-transition);
+}
+
+.login-suite-back:hover {
+  transform: translateY(-1px);
+  border-color: rgba(248, 113, 113, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.login-suite-back:focus-visible {
+  outline: 2px solid var(--lb-red);
+  outline-offset: 2px;
+}
+
 /* Tarjeta glass */
 .login-card-wrap {
   width: 100%;

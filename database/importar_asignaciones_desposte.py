@@ -105,9 +105,9 @@ def main():
     app = create_app()
     with app.app_context():
         deleted = (
-            RegistroAsignaciones.query.filter(
-                db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS)
-            ).delete(synchronize_session=False)
+            RegistroAsignaciones.query.filter(RegistroAsignaciones.es_planta_desposte.is_(True)).delete(
+                synchronize_session=False
+            )
         )
         db.session.commit()
         print(f"Eliminados {deleted} registros previos de asignaciones DESPOSTE/subáreas.")
@@ -128,6 +128,7 @@ def main():
                     area_lockers=r["area_lockers"],
                     estado="ACTIVO",
                     observaciones=r["observaciones"],
+                    es_planta_desposte=True,
                 )
             )
         db.session.commit()

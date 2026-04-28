@@ -149,9 +149,14 @@ const MODULES_RAW = [
     columns: [
       { key: 'identificacion', label: 'Identificación' },
       { key: 'operario', label: 'Operario' },
+      { key: 'area', label: 'Área' },
+      { key: 'talla_operarios', label: 'Talla' },
+      { key: 'talla_dotacion', label: 'Talla Dotación Asignada' },
+      { key: 'area_lockers', label: 'Área de Lockers' },
       { key: 'codigo_dotacion', label: 'Cód. Dotación' },
       { key: 'codigo_lockets', label: 'Cód. Lockers' },
-      { key: 'fecha_asignacion', label: 'Fecha asignación' },
+      { key: 'codigo_seca_botas', label: 'Cód. Seca Botas' },
+      { key: 'fecha_entrega', label: 'Fecha de Entrega' },
       { key: 'estado', label: 'Estado' },
     ],
     formFields: [

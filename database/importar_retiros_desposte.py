@@ -93,15 +93,14 @@ def main():
                     "talla_operarios": (row.get("Talla de Operarios") or "").strip(),
                     "talla_dotacion": (row.get("Talla de dotacion asignada") or "").strip(),
                     "area_lockers": (row.get("Area de Lockers") or "").strip(),
+                    "es_planta_desposte": True,
                 }
             )
 
     app = create_app()
     with app.app_context():
-        deleted = (
-            HistorialRetiros.query.filter(
-                db.func.upper(HistorialRetiros.area).in_(DESPOSTE_AREAS)
-            ).delete(synchronize_session=False)
+        deleted = HistorialRetiros.query.filter(HistorialRetiros.es_planta_desposte.is_(True)).delete(
+            synchronize_session=False
         )
         db.session.commit()
         print(f"Eliminados {deleted} retiros previos de DESPOSTE/subáreas.")

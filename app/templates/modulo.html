@@ -99,6 +99,13 @@
           <option value="{{ opt }}" {% if edit_data.get('codigo_lockets', '') == opt %}selected{% endif %}>{{ opt }}</option>
           {% endfor %}
         </select>
+        {% elif f.name == 'codigo_seca_botas' and opciones_seca_botas is defined %}
+        <select id="f_codigo_seca_botas" name="codigo_seca_botas" class="codigo-select">
+          <option value="">Seleccione…</option>
+          {% for opt in opciones_seca_botas %}
+          <option value="{{ opt }}" {% if edit_data.get('codigo_seca_botas', '') == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endfor %}
+        </select>
         {% else %}
         <input type="{{ f.type }}" id="f_{{ f.name }}" name="{{ f.name }}"
                class="{% if f.name == 'estado' %}estado-input{% endif %}"

@@ -15,6 +15,7 @@ class HistorialRetiros(db.Model):
     talla_dotacion = db.Column(db.String(20), default="")
     area_lockers = db.Column(db.String(100), default="")
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
+    es_planta_desposte = db.Column(db.Boolean, nullable=False, default=False)
 
     def __repr__(self):
         return f"<HistorialRetiros {self.id}>"

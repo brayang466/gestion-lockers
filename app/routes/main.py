@@ -11,7 +11,7 @@ from app.models import (
     BaseLockers, BaseDotaciones, Usuario,
     RegistroPersonal, RegistroAsignaciones, DotacionesDisponibles,
     LockerDisponibles, HistorialRetiros, PersonalPresupuestado,
-    IngresoLockers, IngresoDotacion, AreaTrabajo,
+    IngresoLockers, IngresoDotacion, AreaTrabajo, SecaBotasDisponibles,
 )
 
 bp = Blueprint("main", __name__)
@@ -24,6 +24,12 @@ _DESPOSTE_SUBAREA_CODES = frozenset(x for x in _DESPOSTE_CODES_UPPER if x != "DE
 
 def _is_desposte_context(area):
     return ((area or "").strip().upper() == "DESPOSTE")
+
+
+def _registro_manual_es_planta_desposte(current_area):
+    """True si el alta manual corresponde a planta Desposte (sesión DESPOSTE o subárea LYD/CAL/…)."""
+    ca_u = (current_area or "").strip().upper()
+    return _is_desposte_context(current_area) or ca_u in _DESPOSTE_SUBAREA_CODES
 
 
 def _lockers_por_sesion_filter(Model, current_area):
@@ -54,21 +60,41 @@ def _lockers_por_sesion_filter(Model, current_area):
 def _registro_area_scope_filter(Model, current_area):
     """Filtra registro/historial por área de sesión, sin cruzar Desposte con otras áreas generales.
 
-    - Sesión DESPOSTE: solo filas cuyo campo `area` está en el ecosistema Desposte (subáreas + DESPOSTE).
-      No se enlaza por locker ni se mezclan áreas ajenas (BENEFICIO, PCC, …).
+    - Sesión DESPOSTE: solo filas `es_planta_desposte` del CSV/import de planta y área en subáreas DESPOSTE.
+      El CSV general puede repetir códigos (LYD, LOG…); no entran aquí.
     - Sesión LYD/CAL/… (subárea): unión de registro “general” (mismo código en area/area_lockers)
       y asignaciones ligadas a locker en planta Desposte con esa misma subárea (no CAL≠LYD).
-    - Otras áreas (BENEFICIO, CALIDAD, LOGISTICA, …): solo igualdad en `area`."""
-    from sqlalchemy import or_, exists, select
+    - CALIDAD / LOGISTICA / BENEFICIO (nombre en sesión): el CSV general suele traer CAL / LOG / LN;
+      se cruza con es_planta_desposte=False para CAL/LOG (no mezclar con subáreas de planta)."""
+    from sqlalchemy import and_, or_, exists, select, true as sql_true
 
     ca = (current_area or "").strip().upper()
     if not ca:
         return None
     ac = getattr(Model, "area")
     if _is_desposte_context(current_area):
-        return db.func.upper(db.func.trim(ac)).in_(DESPOSTE_AREAS)
+        flag = getattr(Model, "es_planta_desposte", None)
+        zone = db.func.upper(db.func.trim(ac)).in_(DESPOSTE_AREAS)
+        if flag is not None:
+            return and_(flag.is_(True), zone)
+        return zone
 
     tu = db.func.upper(db.func.trim(ac))
+    flag = getattr(Model, "es_planta_desposte", None)
+
+    def _no_es_planta_desposte():
+        if flag is None:
+            return sql_true()
+        return or_(flag.is_(False), flag.is_(None))
+
+    # Área en sesión = nombre largo (area_trabajo); CSV histórico = código corto.
+    if ca == "CALIDAD":
+        return or_(tu == "CALIDAD", and_(tu == "CAL", _no_es_planta_desposte()))
+    if ca == "LOGISTICA":
+        return or_(tu == "LOGISTICA", and_(tu == "LOG", _no_es_planta_desposte()))
+    if ca == "BENEFICIO":
+        return or_(tu == "BENEFICIO", tu == "LN")
+
     cond = tu == ca
 
     if ca in _DESPOSTE_SUBAREA_CODES:
@@ -104,6 +130,25 @@ def _normalize_estado_base_lockers(estado):
     if u == "ASIGNADA":
         return "ASIGNADO"
     return u
+
+
+def _normalize_estado_seca_botas(estado):
+    """Normaliza estado para seca_botas: devuelve solo ASIGNADO o DISPONIBLE."""
+    if not estado or not isinstance(estado, str):
+        return "DISPONIBLE"
+    s = estado.strip()
+    if not s:
+        return "DISPONIBLE"
+    u = s.upper()
+    if u in ("DISPONIBLE", "ASIGNADO"):
+        return u
+    if u == "ASIGNADA":
+        return "ASIGNADO"
+    if "DISP" in u:
+        return "DISPONIBLE"
+    if "ASIG" in u:
+        return "ASIGNADO"
+    return "DISPONIBLE"
 
 
 def _normalize_estado_base_dotaciones(estado):
@@ -344,6 +389,24 @@ MODULOS_CONFIG = {
         ],
         "date_fields": [],
     },
+    "seca-botas-disponibles": {
+        "model": SecaBotasDisponibles,
+        "titulo": "Seca Botas Disponibles",
+        "icon": "boot",
+        "area_key": "area",
+        "solo_estado_disponible_seca_botas": True,
+        "columnas": [
+            {"key": "codigo", "label": "CODIGO"},
+            {"key": "area", "label": "AREA"},
+            {"key": "area_locker", "label": "AREA LOCKER"},
+        ],
+        "form_fields": [
+            {"name": "codigo", "label": "CODIGO", "type": "text", "required": True},
+            {"name": "area", "label": "AREA", "type": "select", "options": []},
+            {"name": "area_locker", "label": "AREA LOCKER", "type": "text"},
+        ],
+        "date_fields": [],
+    },
     "base-dotaciones": {
         "model": BaseDotaciones,
         "titulo": "Base de Dotaciones",
@@ -436,9 +499,14 @@ MODULOS_CONFIG = {
         "columnas": [
             {"key": "identificacion", "label": "Identificación"},
             {"key": "operario", "label": "Operario"},
+            {"key": "area", "label": "Área"},
+            {"key": "talla_operarios", "label": "Talla"},
+            {"key": "talla_dotacion", "label": "Talla Dotación Asignada"},
+            {"key": "area_lockers", "label": "Área de Lockers"},
             {"key": "codigo_dotacion", "label": "Cód. Dotación"},
             {"key": "codigo_lockets", "label": "Cód. Lockers"},
-            {"key": "fecha_asignacion", "label": "Fecha asignación"},
+            {"key": "codigo_seca_botas", "label": "Cód. Seca Botas"},
+            {"key": "fecha_entrega", "label": "Fecha de Entrega"},
             {"key": "estado", "label": "Estado"},
         ],
         "form_fields": [
@@ -448,7 +516,7 @@ MODULOS_CONFIG = {
             {"name": "operario", "label": "Operario", "type": "text"},
             {"name": "identificacion", "label": "Identificación", "type": "text", "required": True},
             {"name": "codigo_lockets", "label": "Código lockers", "type": "text"},
-            {"name": "codigo_seca_botas", "label": "Código seca botas", "type": "text"},
+            {"name": "codigo_seca_botas", "label": "Cód. Seca Botas", "type": "text"},
             {"name": "area", "label": "Área", "type": "text"},
             {"name": "talla_operarios", "label": "Talla operarios", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "talla_dotacion", "label": "Talla dotación", "type": "select", "options": TALLAS_SELECT_OPCIONES},
@@ -523,6 +591,7 @@ MODULOS_CONFIG = {
 MODULOS_ORDER = [
     "dotaciones-disponibles",
     "locker-disponibles",
+    "seca-botas-disponibles",
     "historial-retiros",
     "ingreso-lockers",
     "ingreso-dotacion",
@@ -947,10 +1016,16 @@ def _dashboard_stats(current_area):
         and_(RegistroAsignaciones.codigo_dotacion.isnot(None), RegistroAsignaciones.codigo_dotacion != ""),
     )
     if _is_desposte_context(current_area):
-        desposte_areas = db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS)
-        total_personal = RegistroAsignaciones.query.filter(desposte_areas, sin_asig).count()
-        total_asignaciones = RegistroAsignaciones.query.filter(desposte_areas, con_asig).count()
-        total_retiros = HistorialRetiros.query.filter(db.func.upper(HistorialRetiros.area).in_(DESPOSTE_AREAS)).count()
+        desposte_ra = and_(
+            RegistroAsignaciones.es_planta_desposte.is_(True),
+            db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS),
+        )
+        total_personal = RegistroAsignaciones.query.filter(desposte_ra, sin_asig).count()
+        total_asignaciones = RegistroAsignaciones.query.filter(desposte_ra, con_asig).count()
+        total_retiros = HistorialRetiros.query.filter(
+            HistorialRetiros.es_planta_desposte.is_(True),
+            db.func.upper(HistorialRetiros.area).in_(DESPOSTE_AREAS),
+        ).count()
     else:
         scope_ra = _registro_area_scope_filter(RegistroAsignaciones, current_area)
         scope_hr = _registro_area_scope_filter(HistorialRetiros, current_area)
@@ -968,6 +1043,7 @@ def _dashboard_stats(current_area):
             func.date(RegistroAsignaciones.creado_en).label("d"),
             func.count(RegistroAsignaciones.id).label("c"),
         ).filter(
+            RegistroAsignaciones.es_planta_desposte.is_(True),
             db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS),
             func.date(RegistroAsignaciones.creado_en) >= seven_days_ago,
         )
@@ -1216,6 +1292,7 @@ def _registro_form_view(modulo_id):
                 fecha_asignacion=datetime.utcnow(),
                 codigo_lockets="",
                 codigo_dotacion="",
+                es_planta_desposte=_registro_manual_es_planta_desposte(current_area),
             )
             db.session.add(obj)
             db.session.commit()
@@ -1331,6 +1408,13 @@ def modulo(modulo_id):
     current_area = (session.get("current_area") or "").strip()
     columnas = list(config["columnas"])
     form_fields = list(config["form_fields"])
+    if modulo_id == "seca-botas-disponibles":
+        areas = [a.nombre for a in AreaTrabajo.query.order_by(AreaTrabajo.nombre).all()]
+        opciones_area = ["SIN ASIGNAR", *areas]
+        for f in form_fields:
+            if f.get("name") == "area":
+                f["options"] = opciones_area
+                break
     # Subárea: visible en DESPOSTE y en subáreas Desposte (LYD, CAL, …); oculta en BENEFICIO, PCC, etc.
     _ca_mod = (current_area or "").strip().upper()
     if (
@@ -1380,6 +1464,7 @@ def modulo(modulo_id):
                         talla_dotacion=getattr(obj, "talla_dotacion", "") or "",
                         area_lockers=getattr(obj, "area_lockers", "") or "",
                         fecha_retiro=datetime.utcnow(),
+                        es_planta_desposte=bool(getattr(obj, "es_planta_desposte", False)),
                     )
                     db.session.add(hist)
                     reg_area = (getattr(obj, "area", None) or "").strip()
@@ -1426,6 +1511,10 @@ def modulo(modulo_id):
                 obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
             if Model == BaseDotaciones and hasattr(obj, "estado"):
                 obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+            if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
+                obj.area = "SIN ASIGNAR"
+            if Model == SecaBotasDisponibles and hasattr(obj, "estado"):
+                obj.estado = _normalize_estado_seca_botas(getattr(obj, "estado") or "")
             if Model == BaseDotaciones and hasattr(obj, "codigo") and _codigo_base_dotaciones_duplicado(getattr(obj, "codigo", None), exclude_id=obj.id):
                 flash("El código ya está registrado.", "error")
                 session["modulo_edit_form"] = {modulo_id: dict(request.form)}
@@ -1502,6 +1591,7 @@ def modulo(modulo_id):
                 obj.estado = "Activo"
             if not (getattr(obj, "id_asignaciones", None) or "").strip():
                 obj.id_asignaciones = _get_next_id_asignaciones()
+            obj.es_planta_desposte = _registro_manual_es_planta_desposte(current_area)
         if Model == HistorialRetiros and getattr(obj, "fecha_retiro", None) is None:
             obj.fecha_retiro = datetime.utcnow()
         if Model == IngresoLockers and getattr(obj, "fecha_ingreso", None) is None:
@@ -1512,6 +1602,10 @@ def modulo(modulo_id):
             obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
         if Model == BaseDotaciones and hasattr(obj, "estado"):
             obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+        if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
+            obj.area = "SIN ASIGNAR"
+        if Model == SecaBotasDisponibles and hasattr(obj, "estado"):
+            obj.estado = _normalize_estado_seca_botas(getattr(obj, "estado") or "")
         if Model == BaseDotaciones and hasattr(obj, "codigo") and _codigo_base_dotaciones_duplicado(getattr(obj, "codigo", None)):
             flash("El código ya está registrado.", "error")
             session["modulo_crear_form"] = {modulo_id: dict(request.form)}
@@ -1564,7 +1658,10 @@ def modulo(modulo_id):
         elif Model == RegistroAsignaciones or Model == HistorialRetiros:
             if _is_desposte_context(current_area):
                 attr = getattr(Model, area_key)
-                query = query.filter(db.func.upper(attr).in_(DESPOSTE_AREAS))
+                query = query.filter(
+                    getattr(Model, "es_planta_desposte").is_(True),
+                    db.func.upper(attr).in_(DESPOSTE_AREAS),
+                )
             else:
                 scope = _registro_area_scope_filter(Model, current_area)
                 if scope is not None:
@@ -1591,6 +1688,8 @@ def modulo(modulo_id):
         query = query.filter(~BaseDotaciones.estado.ilike("%asignada%"))
     if config.get("solo_estado_disponible_locker") and Model == LockerDisponibles:
         query = query.filter(db.func.lower(LockerDisponibles.estado) == "disponible")
+    if config.get("solo_estado_disponible_seca_botas") and Model == SecaBotasDisponibles:
+        query = query.filter(db.func.lower(SecaBotasDisponibles.estado) == "disponible")
     search_q = (request.args.get("q") or "").strip()
     if search_q:
         from sqlalchemy import or_, cast, String
@@ -1614,6 +1713,19 @@ def modulo(modulo_id):
     page = min(page, total_pages)
     from sqlalchemy import text
 
+    # Registro asignaciones / historial retiros: fecha más reciente primero (fecha entrega → fecha asignación/retiro → alta).
+    order_asignaciones_reciente = None
+    if Model == RegistroAsignaciones:
+        od = db.func.coalesce(
+            RegistroAsignaciones.fecha_entrega,
+            RegistroAsignaciones.fecha_asignacion,
+            RegistroAsignaciones.creado_en,
+        )
+        order_asignaciones_reciente = (od.desc(), RegistroAsignaciones.id.desc())
+    elif Model == HistorialRetiros:
+        od = db.func.coalesce(HistorialRetiros.fecha_retiro, HistorialRetiros.creado_en)
+        order_asignaciones_reciente = (od.desc(), HistorialRetiros.id.desc())
+
     # Orden general de módulos por código (menor -> mayor) cuando exista un campo de código.
     # Si no hay código aplicable, mantiene orden por id descendente.
     code_order_fields = ("codigo", "identificacion", "id_asignaciones", "codigo_dotacion", "codigo_lockets")
@@ -1630,7 +1742,14 @@ def modulo(modulo_id):
             ]
             break
 
-    if order_by_code:
+    if order_asignaciones_reciente is not None:
+        rows = (
+            query.order_by(*order_asignaciones_reciente)
+            .limit(PER_PAGE)
+            .offset((page - 1) * PER_PAGE)
+            .all()
+        )
+    elif order_by_code:
         rows = (
             query.order_by(*order_by_code)
             .limit(PER_PAGE)
@@ -1679,7 +1798,10 @@ def modulo(modulo_id):
     if modulo_id == "registro-asignaciones" and current_area:
         q_pend = RegistroAsignaciones.query
         if _is_desposte_context(current_area):
-            q_pend = q_pend.filter(db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS))
+            q_pend = q_pend.filter(
+                RegistroAsignaciones.es_planta_desposte.is_(True),
+                db.func.upper(RegistroAsignaciones.area).in_(DESPOSTE_AREAS),
+            )
         else:
             sc = _registro_area_scope_filter(RegistroAsignaciones, current_area)
             if sc is not None:
@@ -1695,7 +1817,14 @@ def modulo(modulo_id):
                     RegistroAsignaciones.codigo_dotacion == "",
                 ),
             )
-            .order_by(RegistroAsignaciones.creado_en.desc())
+            .order_by(
+                db.func.coalesce(
+                    RegistroAsignaciones.fecha_entrega,
+                    RegistroAsignaciones.fecha_asignacion,
+                    RegistroAsignaciones.creado_en,
+                ).desc(),
+                RegistroAsignaciones.id.desc(),
+            )
             .limit(100)
             .all()
         )
@@ -1736,10 +1865,13 @@ def modulo(modulo_id):
         saved_crear = session.pop("modulo_crear_form", {}).get(modulo_id)
         if saved_crear:
             edit_data = {k: saved_crear.get(k, "") for k in (f["name"] for f in form_fields)}
+        elif modulo_id == "seca-botas-disponibles":
+            edit_data = {"area": "SIN ASIGNAR", "estado": "DISPONIBLE"}
     # Listas de códigos para selects: disponibles (asignación) o todos (historial retiros)
     form_field_names = [f["name"] for f in form_fields]
     opciones_dotacion = []
     opciones_locker = []
+    opciones_seca_botas = []
     if "codigo_dotacion" in form_field_names:
         q_dot = BaseDotaciones.query
         if current_area == "DESPOSTE":
@@ -1768,6 +1900,19 @@ def modulo(modulo_id):
             if lf is not None:
                 q = q.filter(lf)
         opciones_locker = [r[0] for r in q.with_entities(LockerDisponibles.codigo).order_by(LockerDisponibles.codigo).all()]
+    if "codigo_seca_botas" in form_field_names:
+        q_sb = SecaBotasDisponibles.query.filter(db.func.lower(SecaBotasDisponibles.estado) != "disponible")
+        # Regla solicitada: para áreas distintas de DESPOSTE, aplicar el filtro por área del código (no por Desposte)
+        if current_area and current_area.strip().upper() != "DESPOSTE":
+            q_sb = q_sb.filter(db.func.upper(db.func.trim(SecaBotasDisponibles.area)) == current_area.strip().upper())
+        opciones_seca_botas = [
+            r[0]
+            for r in q_sb.with_entities(SecaBotasDisponibles.codigo)
+            .distinct()
+            .order_by(SecaBotasDisponibles.codigo)
+            .all()
+            if r[0]
+        ]
     return render_template(
         "modulo.html",
         modulo_id=modulo_id,
@@ -1779,6 +1924,7 @@ def modulo(modulo_id):
         edit_data=edit_data,
         opciones_dotacion=opciones_dotacion,
         opciones_locker=opciones_locker,
+        opciones_seca_botas=opciones_seca_botas,
         modulos_config=MODULOS_CONFIG,
         can_edit=can_edit and not config.get("solo_lectura", False),
         can_crear=not config.get("no_crear", False),

@@ -23,6 +23,8 @@ class RegistroAsignaciones(db.Model):
     estado = db.Column(db.String(40), default="Activo")
     observaciones = db.Column(db.Text)
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
+    # True solo si el registro viene de ASIGNACIONES DESPOSTE.csv o alta manual en planta (no CSV general).
+    es_planta_desposte = db.Column(db.Boolean, nullable=False, default=False)
 
     def __repr__(self):
         return f"<RegistroAsignaciones {self.id}>"
