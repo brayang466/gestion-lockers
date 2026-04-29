@@ -192,9 +192,55 @@ def import_locker_disponibles(r, rep, app):
     c = [
         (("# locker", "numero locker", "codigo"), "codigo"),
         (("area",), "area"),
+        (("subarea", "subárea", "sub área"), "subarea"),
         (("areas de locker", "area de lockers"), "area_lockers"),
+        (("estado",), "estado"),
+        (("observaciones",), "observaciones"),
     ]
-    return _import(r, rep, app, LockerDisponibles, c, "locker_disponibles")
+    with app.app_context():
+        if rep:
+            # No borrar lockers de planta Desposte; se cargan con database/importar_lockers_desposte.py
+            LockerDisponibles.query.filter(db.func.upper(db.func.trim(LockerDisponibles.area)) != "DESPOSTE").delete(
+                synchronize_session=False
+            )
+            db.session.commit()
+        first = r[0]
+        idx = {}
+        for headers, attr, *opt in c:
+            i = find_idx(first, headers)
+            if i is not None:
+                idx[attr] = (i, opt[0] if opt else None)
+        imp, skip = 0, 0
+        for row in r[1:]:
+            data = {}
+            for attr, (i, opt) in idx.items():
+                v = safe(row, i)
+                data[attr] = v
+            codigo = (data.get("codigo") or "").strip()
+            if not codigo:
+                skip += 1
+                continue
+            area_u = (data.get("area") or "").strip().upper()
+            if area_u == "DESPOSTE":
+                # Este CSV es para áreas generales; Desposte va aparte
+                skip += 1
+                continue
+            data["codigo"] = codigo
+            data["area"] = (data.get("area") or "").strip()
+            data["subarea"] = (data.get("subarea") or "").strip() if "subarea" in data else ""
+            data["area_lockers"] = (data.get("area_lockers") or "").strip()
+            if "estado" in data and data.get("estado") is not None:
+                data["estado"] = (data.get("estado") or "").strip() or "disponible"
+            if "observaciones" in data and data.get("observaciones") is not None:
+                data["observaciones"] = (data.get("observaciones") or "").strip()
+            try:
+                db.session.add(LockerDisponibles(**data))
+                imp += 1
+            except Exception:
+                skip += 1
+        db.session.commit()
+        print(f"locker_disponibles: importados {imp}, omitidos {skip}.")
+        return True
 
 # HISTORIAL DE RETIROS: ID RETIRO, identificacion, Codigo de Dotacion, Fecha de Retiro, Operario, Codigo de Lockets, Area, ...
 def import_historial_retiros(r, rep, app):
