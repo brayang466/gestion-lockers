@@ -996,10 +996,11 @@ def api_verificar_codigos():
 def _dashboard_stats(current_area):
     """Calcula estadísticas del dashboard para un área. Usado por dashboard() y por api_dashboard_stats()."""
     from sqlalchemy import func, or_, and_, false
-    lf = _lockers_por_sesion_filter(BaseLockers, current_area)
-    q_lockers = BaseLockers.query.filter(lf) if lf is not None else BaseLockers.query.filter(false())
+    # Dashboard debe coincidir con el módulo "Locker Disponibles": usar la tabla locker_disponibles + filtro por sesión.
+    lf_disp = _lockers_por_sesion_filter(LockerDisponibles, current_area)
+    q_lockers = LockerDisponibles.query.filter(lf_disp) if lf_disp is not None else LockerDisponibles.query.filter(false())
     total_lockers = q_lockers.count()
-    disponibles = q_lockers.filter(db.func.lower(BaseLockers.estado) == "disponible").count()
+    disponibles = q_lockers.filter(db.func.lower(LockerDisponibles.estado) == "disponible").count()
     q_dot = BaseDotaciones.query
     if current_area == "DESPOSTE":
         q_dot = q_dot.filter(BaseDotaciones.area_uso == "DESPOSTE")
