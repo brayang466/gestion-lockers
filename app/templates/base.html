@@ -43,7 +43,7 @@
                     <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                     <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
                 </button>
-                <span class="nav-timer" id="sessionTimer" aria-label="Tiempo en sesión">00:00:00</span>
+                <span class="nav-timer" id="sessionTimer" aria-label="Hora actual">00:00:00</span>
                 <span class="nav-user-wrap">
             <span class="nav-user">{{ session.get('user_nombre', '') }}</span>
                     <span class="nav-role">
@@ -53,7 +53,7 @@
                         {% else %}Usuario{% endif %}
                     </span>
                 </span>
-                <a href="{{ url_for('main.logout') }}" class="nav-link" onclick="sessionStorage.removeItem('gestor_session_start');">Cerrar sesión</a>
+                <a href="{{ url_for('main.logout') }}" class="nav-link">Cerrar sesión</a>
             </span>
         </nav>
         {% endif %}
@@ -65,23 +65,20 @@
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
     <script>
     (function() {
-        var key = 'gestor_session_start';
-        if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, Date.now().toString());
-        var start = parseInt(sessionStorage.getItem(key), 10);
-        function pad(n) { return (n < 10 ? '0' : '') + n; }
-        function updateTimer() {
-            var elapsed = Math.floor((Date.now() - start) / 1000);
-            var h = Math.floor(elapsed / 3600);
-            var m = Math.floor((elapsed % 3600) / 60);
-            var s = elapsed % 60;
-            var text = pad(h) + ':' + pad(m) + ':' + pad(s);
+        function pad2(n) { n = parseInt(n, 10) || 0; return (n < 10 ? '0' : '') + n; }
+        function nowText() {
+            var d = new Date();
+            return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+        }
+        function updateClock() {
+            var text = nowText();
             var el = document.getElementById('sessionTimer');
             if (el) el.textContent = text;
             var elSidebar = document.getElementById('sessionTimerSidebar');
             if (elSidebar) elSidebar.textContent = text;
         }
-        updateTimer();
-        setInterval(updateTimer, 1000);
+        updateClock();
+        setInterval(updateClock, 1000);
     })();
     </script>
     <script>

@@ -14,6 +14,7 @@ class HistorialRetiros(db.Model):
     talla_operarios = db.Column(db.String(20), default="")
     talla_dotacion = db.Column(db.String(20), default="")
     area_lockers = db.Column(db.String(100), default="")
+    observaciones = db.Column(db.String(500), default="")
     creado_en = db.Column(db.DateTime, default=datetime.utcnow)
     es_planta_desposte = db.Column(db.Boolean, nullable=False, default=False)
 

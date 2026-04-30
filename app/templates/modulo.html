@@ -18,14 +18,19 @@
 <form method="get" action="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="modulo-search-wrap" id="modulo-search-form">
   <label for="modulo-search" class="modulo-search-label">Buscar</label>
   <input type="search" id="modulo-search" name="q" value="{{ search_q|default('', true)|e }}" placeholder="Buscar en este módulo…" class="modulo-search-input" aria-label="Buscar en el listado" autocomplete="off">
+  {% if filter_col and filter_val %}
+  <input type="hidden" name="fcol" value="{{ filter_col|e }}">
+  <input type="hidden" name="fval" value="{{ filter_val|e }}">
+  {% endif %}
   {% if search_q %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="btn btn-cancel modulo-search-clear">Limpiar</a>
+  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-cancel modulo-search-clear">Limpiar</a>
   {% endif %}
 </form>
 
 <div class="modulo-actions">
+  <button type="button" class="btn btn-cancel js-toggle-filtro" aria-expanded="false" aria-controls="moduloFiltroPanel">Filtrar</button>
   {% if can_edit|default(true) and can_crear|default(true) %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, q=search_q or none, crear=1) }}" class="btn btn-crear">Crear</a>
+  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, q=search_q or none, fcol=filter_col or none, fval=filter_val or none, crear=1) }}" class="btn btn-crear">Crear</a>
   {% endif %}
   {% if modulo_id == 'registro-asignaciones' and not item_edit and not request.args.get('crear') %}
   <div class="dropdown-pendientes-wrap">
@@ -62,6 +67,33 @@
   <span class="modulo-pagination-info">Mostrando {{ ((page - 1) * per_page) + 1 }}-{{ (page * per_page) if (page * per_page <= total) else total }} de {{ total }}</span>
   {% endif %}
 </div>
+</div>
+
+<div id="moduloFiltroPanel" class="modulo-filter-panel" hidden>
+  <form method="get" action="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="modulo-filter-form">
+    {% if search_q %}
+    <input type="hidden" name="q" value="{{ search_q|e }}">
+    {% endif %}
+    <div class="modulo-filter-grid">
+      <div class="form-group">
+        <label for="fcol">Columna</label>
+        <select id="fcol" name="fcol">
+          <option value="">Seleccione…</option>
+          {% for col in columnas %}
+          <option value="{{ col.key }}" {% if filter_col == col.key %}selected{% endif %}>{{ col.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="fval">Valor</label>
+        <input id="fval" name="fval" type="text" value="{{ filter_val|default('', true)|e }}" placeholder="Escribe para filtrar…">
+      </div>
+      <div class="form-group modulo-filter-actions">
+        <button type="submit" class="btn btn-primary">Aplicar</button>
+        <a href="{{ url_for('main.modulo', modulo_id=modulo_id, q=search_q or none) }}" class="btn btn-cancel">Quitar filtros</a>
+      </div>
+    </div>
+  </form>
 </div>
 
 <div class="modulo-body-distribution{% if can_edit|default(true) and (request.args.get('crear') or item_edit) %} has-form{% endif %}">
@@ -146,14 +178,18 @@
       {% if not items %}
       <tr>
         <td colspan="{{ columnas|length + (1 if can_edit|default(true) else 0) }}" class="empty">
-          {% if can_edit|default(true) %}No hay registros. Use &quot;Crear&quot; para agregar uno.{% else %}No hay registros.{% endif %}
+          {% if modulo_id == 'registro-personal' %}
+            No hay personal pendiente por asignación, Te encuentras al día.
+          {% else %}
+            {% if can_edit|default(true) %}No hay registros. Use &quot;Crear&quot; para agregar uno.{% else %}No hay registros.{% endif %}
+          {% endif %}
         </td>
       </tr>
       {% else %}
       {% for item in items %}
       <tr>
         {% for col in columnas %}
-        <td>
+        <td data-label="{{ col.label }}">
           {% if col.key == 'estado' %}
             {% set v = (item[col.key] or '')|string|upper %}
             {% if modulo_id == 'registro-asignaciones' and item.get('_estado_pendiente') %}
@@ -178,13 +214,17 @@
               —
             {% endif %}
           {% else %}
-            {{ item[col.key] if item[col.key] is not none and item[col.key] != '' else '—' }}
+            {% if col.key == 'observaciones' %}
+              {{ item[col.key] if item[col.key] is not none and item[col.key] != '' else 'N/A' }}
+            {% else %}
+              {{ item[col.key] if item[col.key] is not none and item[col.key] != '' else '—' }}
+            {% endif %}
           {% endif %}
         </td>
         {% endfor %}
         {% if can_edit|default(true) %}
         <td class="td-actions">
-          <a href="{{ url_for('main.modulo', modulo_id=modulo_id, edit_id=item.id, page=page, q=search_q or none) }}" class="btn-editar" title="Editar">
+        <a href="{{ url_for('main.modulo', modulo_id=modulo_id, edit_id=item.id, page=page, q=search_q or none, fcol=filter_col or none, fval=filter_val or none) }}" class="btn-editar" title="Editar">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
             Editar
           </a>
@@ -207,11 +247,11 @@
 {% if total_pages is defined and total_pages > 1 %}
 <nav class="modulo-pagination" aria-label="Paginación">
   {% if page > 1 %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page - 1, q=search_q or none) }}" class="btn btn-back">← Anterior</a>
+  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page - 1, q=search_q or none, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-back">← Anterior</a>
   {% endif %}
   <span class="modulo-pagination-pages">Página {{ page }} de {{ total_pages }}</span>
   {% if page < total_pages %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page + 1, q=search_q or none) }}" class="btn btn-back">Siguiente →</a>
+  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page + 1, q=search_q or none, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-back">Siguiente →</a>
   {% endif %}
 </nav>
 {% endif %}
@@ -340,6 +380,19 @@
     if (inpLock) inpLock.addEventListener('input', debounceVerificar);
     if ((inpDot && inpDot.value) || (inpLock && inpLock.value)) actualizarEstadosCodigos();
   }
+})();
+</script>
+
+<script>
+(function() {
+  var btn = document.querySelector('.js-toggle-filtro');
+  var panel = document.getElementById('moduloFiltroPanel');
+  if (!btn || !panel) return;
+  btn.addEventListener('click', function() {
+    var open = panel.getAttribute('hidden') === null;
+    panel.toggleAttribute('hidden', open);
+    btn.setAttribute('aria-expanded', (!open).toString());
+  });
 })();
 </script>
 {% endblock %}

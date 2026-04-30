@@ -57,6 +57,7 @@
             <div class="dashboard-toolbar-main">
                 <h1>Panel de control</h1>
                 <p class="hint">Vista general en tiempo real de tu operación por área.</p>
+                <p class="hint" id="dashboardGreeting" data-user-name="{{ session.get('user_nombre', '') or '' }}"></p>
             </div>
             <div class="dashboard-toolbar-meta" aria-label="Resumen rápido">
                 <span class="toolbar-chip">Área: {{ current_area or '—' }}</span>
@@ -82,10 +83,6 @@
                 <div class="stat-value">{{ dotaciones_disponibles }}</div>
                 <div class="stat-label">En stock</div>
             </div>
-            <div class="col-3 stat-card" data-stat="total_personal">
-                <div class="stat-value">{{ total_personal }}</div>
-                <div class="stat-label">Personal</div>
-            </div>
             <div class="col-3 stat-card" data-stat="total_asignaciones">
                 <div class="stat-value">{{ total_asignaciones }}</div>
                 <div class="stat-label">Asignaciones</div>
@@ -99,40 +96,70 @@
             <section class="widget-chart dashboard-chart-panel dashboard-reminders-widget" aria-label="Recordatorios">
                 <div class="reminders-widget-header">
                     <h3>Recordatorios</h3>
-                    <button type="button" class="cal-notify-btn" id="calNotifyBtn" title="Permitir notificaciones del sistema para los recordatorios">Activar avisos</button>
                 </div>
                 <div id="reminderCalendarMount" class="reminder-calendar-mount" data-user-id="{{ session.get('user_id', 0) }}"></div>
             </section>
             <div id="reminderToast" class="reminder-toast" hidden role="status" aria-live="polite"></div>
 
-            <aside class="dashboard-right dashboard-right-inline" aria-label="Sesión">
-                <div class="panel-title">Sesión</div>
-                <p class="panel-user">{{ session.get('user_nombre', '') }}</p>
-                <p class="panel-role">
-                    {% if session.get('user_rol') == 'superadmin' %}Super Administrador{% elif session.get('user_rol') == 'admin' %}Administrador{% elif session.get('user_rol') == 'coordinador' %}Coordinador{% else %}Usuario{% endif %}
-                </p>
-                <dl class="panel-detail">
-                    <dt>Tiempo</dt>
-                    <dd><span id="sessionTimerSidebar">00:00:00</span></dd>
-                    <dt>Área actual</dt>
-                    <dd>{{ current_area or '—' }}</dd>
-                </dl>
-            </aside>
+            <section class="widget-chart dashboard-chart-panel" aria-label="Personal presupuestado">
+                <div class="reminders-widget-header">
+                    <h3>Personal presupuestado</h3>
+                    <div class="hint" style="margin-left:auto">Área: {{ current_area or '—' }}</div>
+                </div>
+                <div style="position:relative; height:240px;">
+                    <canvas id="ppChart" aria-label="Gráfica de personal presupuestado"></canvas>
+                </div>
+            </section>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 <script src="{{ url_for('static', filename='js/dashboard-reminders.js') }}" defer></script>
 <script>
 (function() {
     var statsUrl = "{{ url_for('main.api_dashboard_stats') }}";
-    var POLL_INTERVAL_MS = 15000;
+    var isSmall = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+    var POLL_INTERVAL_MS = isSmall ? 30000 : 15000;
+    var ppChart = null;
+    var inFlight = false;
+
+    function initPPChart() {
+        var canvas = document.getElementById('ppChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        var ctx = canvas.getContext('2d');
+        ppChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Aprobados', 'Contratados', 'Por contratar'],
+                datasets: [{
+                    label: 'Personal',
+                    data: [0, 0, 0],
+                    backgroundColor: ['rgba(59,130,246,0.55)', 'rgba(16,185,129,0.55)', 'rgba(239,68,68,0.55)'],
+                    borderColor: ['rgba(59,130,246,0.9)', 'rgba(16,185,129,0.9)', 'rgba(239,68,68,0.9)'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { enabled: true }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0 } }
+                }
+            }
+        });
+    }
 
     function updateDashboardFromJson(stats) {
         if (!stats) return;
         var section = document.getElementById('dashboardStatsSection');
         if (section) {
-            ['total_lockers', 'disponibles', 'total_dotaciones', 'dotaciones_disponibles', 'total_personal', 'total_asignaciones', 'total_retiros'].forEach(function(key) {
+            ['total_lockers', 'disponibles', 'total_dotaciones', 'dotaciones_disponibles', 'total_asignaciones', 'total_retiros'].forEach(function(key) {
                 var card = section.querySelector('.stat-card[data-stat="' + key + '"]');
                 if (card) {
                     var valEl = card.querySelector('.stat-value');
@@ -140,16 +167,51 @@
                 }
             });
         }
+        if (ppChart && stats.personal_presupuestado) {
+            var pp = stats.personal_presupuestado || {};
+            ppChart.data.datasets[0].data = [
+                pp.aprobados || 0,
+                pp.contratados || 0,
+                pp.por_contratar || 0
+            ];
+            ppChart.update();
+        }
     }
 
     function fetchStats() {
+        if (inFlight) return;
+        inFlight = true;
         fetch(statsUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(function(r) { return r.json(); })
             .then(updateDashboardFromJson)
-            .catch(function() {});
+            .catch(function() {})
+            .finally(function() { inFlight = false; });
     }
 
-    if (statsUrl && document.visibilityState !== 'hidden') {
+    function bootstrap() {
+        initPPChart();
+        fetchStats();
+        if (statsUrl && document.visibilityState !== 'hidden') {
+            var pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible') {
+                    fetchStats();
+                    pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
+                } else {
+                    clearInterval(pollTimer);
+                }
+            });
+        }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootstrap);
+    } else {
+        bootstrap();
+    }
+
+    // (el bloque viejo de polling se reemplazó por bootstrap())
+    /*
         var pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'visible') {
@@ -160,6 +222,17 @@
             }
         });
     }
+    */
+
+    function applyGreeting() {
+        var el = document.getElementById('dashboardGreeting');
+        if (!el) return;
+        var name = (el.getAttribute('data-user-name') || '').trim();
+        var h = new Date().getHours();
+        var greet = (h < 12) ? 'Buenos días' : (h < 18) ? 'Buenas tardes' : 'Buenas noches';
+        el.textContent = greet + (name ? (', ' + name) : '') + '.';
+    }
+    applyGreeting();
 })();
 </script>
 {% endblock %}

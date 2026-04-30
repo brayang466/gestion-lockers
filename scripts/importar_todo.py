@@ -21,7 +21,7 @@ ORDEN = [
     ("base_dotaciones", ["base_dotaciones.csv", "DOTACIONES.csv"]),
     ("registro_personal", ["registro_personal.csv", "PERSONAL.csv"]),
     ("personal_presupuestado", ["personal_presupuestado.csv", "PERSONAL PRESUPUESTADO.csv"]),
-    ("dotaciones_disponibles", ["dotaciones_disponibles.csv", "DOTACIONES DISPONIBLES.csv"]),
+    ("dotaciones_disponibles", ["dotaciones_disponibles.csv", "DOT DISP.csv", "DOTACIONES DISPONIBLES.csv"]),
     (
         "locker_disponibles",
         ["locker_disponibles.csv", "LOCKER DISP ACTUALIZADO.csv", "LOCKER DISPONIBLES.csv"],

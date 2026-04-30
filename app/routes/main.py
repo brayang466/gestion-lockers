@@ -21,6 +21,32 @@ _DESPOSTE_CODES_UPPER = frozenset((a or "").upper() for a in DESPOSTE_AREAS)
 # Códigos de subárea en planta Desposte (DES, LYD, CAL, …) — sin la palabra DESPOSTE como “subárea”
 _DESPOSTE_SUBAREA_CODES = frozenset(x for x in _DESPOSTE_CODES_UPPER if x != "DESPOSTE")
 
+# Cierre por inactividad (segundos). Valor prudente: 25 min.
+IDLE_TIMEOUT_SECONDS = 25 * 60
+
+
+@bp.before_app_request
+def _idle_timeout_guard():
+    """Cierra sesión si no hay actividad en un tiempo prudente."""
+    path = (request.path or "").lower()
+    if path.startswith("/static/"):
+        return None
+    if path in ("/login", "/acceso-integrado", "/logout"):
+        return None
+    if session.get("user_id") is None:
+        return None
+    now = int(datetime.utcnow().timestamp())
+    last = session.get("last_activity_ts")
+    try:
+        last_i = int(last) if last is not None else None
+    except Exception:
+        last_i = None
+    if last_i is not None and (now - last_i) > IDLE_TIMEOUT_SECONDS:
+        session.clear()
+        return redirect(url_for("main.login", reason="idle"))
+    session["last_activity_ts"] = now
+    return None
+
 
 def _is_desposte_context(area):
     return ((area or "").strip().upper() == "DESPOSTE")
@@ -371,6 +397,8 @@ MODULOS_CONFIG = {
         "titulo": "Locker Disponibles",
         "icon": "key",
         "area_key": "area",
+        "no_crear": True,
+        "solo_lectura": True,
         "solo_estado_disponible_locker": True,
         "columnas": [
             {"key": "codigo", "label": "Código"},
@@ -394,6 +422,8 @@ MODULOS_CONFIG = {
         "titulo": "Seca Botas Disponibles",
         "icon": "boot",
         "area_key": "area",
+        "no_crear": True,
+        "solo_lectura": True,
         "solo_estado_disponible_seca_botas": True,
         "columnas": [
             {"key": "codigo", "label": "CODIGO"},
@@ -414,6 +444,7 @@ MODULOS_CONFIG = {
         "area_key": "area_uso",
         "columnas": [
             {"key": "codigo", "label": "Código"},
+            {"key": "area_uso", "label": "Área uso"},
             {"key": "cantidad", "label": "Cantidad"},
             {"key": "talla", "label": "Talla"},
             {"key": "estado", "label": "Estado"},
@@ -445,9 +476,10 @@ MODULOS_CONFIG = {
     },
     "registro-personal": {
         "model": RegistroAsignaciones,
-        "titulo": "Personal Registrado",
+        "titulo": "Personal Pendiente",
         "icon": "users",
         "area_key": "area",
+        "no_crear": True,
         "solo_sin_asignacion": True,
         "columnas": [
             {"key": "operario", "label": "Nombre"},
@@ -531,10 +563,17 @@ MODULOS_CONFIG = {
         "titulo": "Historial de Retiros",
         "icon": "archive",
         "area_key": "area",
+        "no_crear": True,
+        "solo_lectura": False,
         "columnas": [
+            {"key": "identificacion", "label": "Identificación"},
             {"key": "operario", "label": "Operario"},
+            {"key": "codigo_lockets", "label": "Cód Lockers"},
+            {"key": "area", "label": "Área"},
+            {"key": "area_lockers", "label": "Área Lockers"},
             {"key": "codigo_dotacion", "label": "Cód. Dotación"},
             {"key": "fecha_retiro", "label": "Fecha retiro"},
+            {"key": "observaciones", "label": "Observaciones"},
         ],
         "form_fields": [
             {"name": "identificacion", "label": "Identificación", "type": "text"},
@@ -546,6 +585,7 @@ MODULOS_CONFIG = {
             {"name": "talla_operarios", "label": "Talla operarios", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "talla_dotacion", "label": "Talla dotación", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "area_lockers", "label": "Área lockers", "type": "text"},
+            {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
         "date_fields": ["fecha_retiro"],
     },
@@ -618,6 +658,8 @@ def login_required(f):
 def login():
     if session.get("user_id"):
         return redirect(url_for("main.dashboard"))
+    if request.method == "GET" and request.args.get("reason") == "idle":
+        flash("Tu sesión se cerró por inactividad. Por favor inicia sesión de nuevo.", "error")
     if request.method == "POST":
         email = (request.form.get("email") or "").strip()
         password = request.form.get("password") or ""
@@ -640,6 +682,7 @@ def login():
         session["user_nombre"] = user.nombre or user.email
         session["user_rol"] = (user.rol or "usuario").strip().lower()
         session["user_area"] = (user.area or "").strip()
+        session["session_started_ts_ms"] = int(datetime.utcnow().timestamp() * 1000)
         session.pop("current_area", None)
         session.pop("logout_to_integrado", None)
         if recordarme:
@@ -682,6 +725,8 @@ def acceso_integrado():
     """Entrada desde otro aplicativo: perfiles + contraseña (misma validación que /login)."""
     if session.get("user_id"):
         return redirect(url_for("main.dashboard"))
+    if request.method == "GET" and request.args.get("reason") == "idle":
+        flash("Tu sesión se cerró por inactividad. Por favor inicia sesión de nuevo.", "error")
 
     def _usuarios_activos():
         return (
@@ -733,6 +778,7 @@ def acceso_integrado():
         session["user_nombre"] = user.nombre or user.email
         session["user_rol"] = (user.rol or "usuario").strip().lower()
         session["user_area"] = (user.area or "").strip()
+        session["session_started_ts_ms"] = int(datetime.utcnow().timestamp() * 1000)
         session.pop("current_area", None)
         session["logout_to_integrado"] = True
         return redirect(url_for("main.areas"))
@@ -996,18 +1042,48 @@ def api_verificar_codigos():
 def _dashboard_stats(current_area):
     """Calcula estadísticas del dashboard para un área. Usado por dashboard() y por api_dashboard_stats()."""
     from sqlalchemy import func, or_, and_, false
-    # Dashboard debe coincidir con el módulo "Locker Disponibles": usar la tabla locker_disponibles + filtro por sesión.
-    lf_disp = _lockers_por_sesion_filter(LockerDisponibles, current_area)
-    q_lockers = LockerDisponibles.query.filter(lf_disp) if lf_disp is not None else LockerDisponibles.query.filter(false())
-    total_lockers = q_lockers.count()
-    disponibles = q_lockers.filter(db.func.lower(LockerDisponibles.estado) == "disponible").count()
+    # Total lockers: siempre desde BaseLockers (fuente de verdad).
+    lf_base = _lockers_por_sesion_filter(BaseLockers, current_area)
+    q_base = BaseLockers.query.filter(lf_base) if lf_base is not None else BaseLockers.query.filter(false())
+    total_lockers = q_base.count()
+
+    # Lockers disponibles: por regla de negocio = BaseLockers estado DISPONIBLE (áreas generales; DESPOSTE por filtro de sesión).
+    disponibles = q_base.filter(db.func.lower(BaseLockers.estado) == "disponible").count()
     q_dot = BaseDotaciones.query
     if current_area == "DESPOSTE":
         q_dot = q_dot.filter(BaseDotaciones.area_uso == "DESPOSTE")
     else:
         q_dot = q_dot.filter(BaseDotaciones.area_uso != "DESPOSTE")
     total_dotaciones = q_dot.count()
-    dotaciones_disponibles = q_dot.filter(db.func.lower(BaseDotaciones.estado) == "disponible").count()
+    # En stock: dotaciones DISPONIBLES que NO estén asignadas en RegistroAsignaciones (áreas generales; DESPOSTE se maneja aparte).
+    q_dot_disp = q_dot.filter(db.func.lower(BaseDotaciones.estado) == "disponible")
+    if not _is_desposte_context(current_area):
+        scope_ra = _registro_area_scope_filter(RegistroAsignaciones, current_area)
+        if scope_ra is not None:
+            assigned_codes_sq = (
+                RegistroAsignaciones.query.filter(scope_ra)
+                .filter(RegistroAsignaciones.codigo_dotacion.isnot(None), RegistroAsignaciones.codigo_dotacion != "")
+                .with_entities(RegistroAsignaciones.codigo_dotacion)
+                .distinct()
+                .subquery()
+            )
+            q_dot_disp = q_dot_disp.filter(~BaseDotaciones.codigo.in_(assigned_codes_sq))
+    dotaciones_disponibles = q_dot_disp.count()
+
+    # Personal presupuestado (por área; DESPOSTE excluido)
+    personal_presupuestado = {"aprobados": 0, "contratados": 0, "por_contratar": 0}
+    ca_u = (current_area or "").strip().upper()
+    if ca_u and ca_u != "DESPOSTE":
+        pp = (
+            PersonalPresupuestado.query.filter(db.func.upper(db.func.trim(PersonalPresupuestado.area)) == ca_u)
+            .first()
+        )
+        if pp:
+            personal_presupuestado = {
+                "aprobados": int(getattr(pp, "aprobados", 0) or 0),
+                "contratados": int(getattr(pp, "contratados", 0) or 0),
+                "por_contratar": int(getattr(pp, "por_contratar", 0) or 0),
+            }
     sin_asig = and_(
         or_(RegistroAsignaciones.codigo_lockets.is_(None), RegistroAsignaciones.codigo_lockets == ""),
         or_(RegistroAsignaciones.codigo_dotacion.is_(None), RegistroAsignaciones.codigo_dotacion == ""),
@@ -1081,6 +1157,7 @@ def _dashboard_stats(current_area):
         "total_personal": total_personal,
         "total_asignaciones": total_asignaciones,
         "total_retiros": total_retiros,
+        "personal_presupuestado": personal_presupuestado,
         "chart_labels": chart_labels,
         "chart_data": chart_data,
     }
@@ -1512,6 +1589,8 @@ def modulo(modulo_id):
                 obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
             if Model == BaseDotaciones and hasattr(obj, "estado"):
                 obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+            if Model == HistorialRetiros and hasattr(obj, "observaciones"):
+                obj.observaciones = ((getattr(obj, "observaciones", None) or "").strip().upper())
             if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
                 obj.area = "SIN ASIGNAR"
             if Model == SecaBotasDisponibles and hasattr(obj, "estado"):
@@ -1603,6 +1682,8 @@ def modulo(modulo_id):
             obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
         if Model == BaseDotaciones and hasattr(obj, "estado"):
             obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+        if Model == HistorialRetiros and hasattr(obj, "observaciones"):
+            obj.observaciones = ((getattr(obj, "observaciones", None) or "").strip().upper())
         if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
             obj.area = "SIN ASIGNAR"
         if Model == SecaBotasDisponibles and hasattr(obj, "estado"):
@@ -1687,11 +1768,42 @@ def modulo(modulo_id):
     if config.get("solo_estado_disponible") and Model == BaseDotaciones:
         query = query.filter(BaseDotaciones.estado.ilike("%disponible%"))
         query = query.filter(~BaseDotaciones.estado.ilike("%asignada%"))
+        # Alcance por área (DESPOSTE aparte; las demás áreas no ven DESPOSTE)
+        if modulo_id == "dotaciones-disponibles":
+            if _is_desposte_context(current_area):
+                query = query.filter(BaseDotaciones.area_uso == "DESPOSTE")
+            else:
+                query = query.filter(BaseDotaciones.area_uso != "DESPOSTE")
+                # Excluir códigos ya asignados en RegistroAsignaciones para el área (regla solicitada)
+                scope_ra = _registro_area_scope_filter(RegistroAsignaciones, current_area)
+                if scope_ra is not None:
+                    assigned_codes_sq = (
+                        RegistroAsignaciones.query.filter(scope_ra)
+                        .filter(RegistroAsignaciones.codigo_dotacion.isnot(None), RegistroAsignaciones.codigo_dotacion != "")
+                        .with_entities(RegistroAsignaciones.codigo_dotacion)
+                        .distinct()
+                        .subquery()
+                    )
+                    query = query.filter(~BaseDotaciones.codigo.in_(assigned_codes_sq))
     if config.get("solo_estado_disponible_locker") and Model == LockerDisponibles:
         query = query.filter(db.func.lower(LockerDisponibles.estado) == "disponible")
     if config.get("solo_estado_disponible_seca_botas") and Model == SecaBotasDisponibles:
         query = query.filter(db.func.lower(SecaBotasDisponibles.estado) == "disponible")
     search_q = (request.args.get("q") or "").strip()
+    filter_col = (request.args.get("fcol") or "").strip()
+    filter_val = (request.args.get("fval") or "").strip()
+
+    if filter_col and filter_val and hasattr(Model, filter_col):
+        from sqlalchemy import cast, String
+        attr = getattr(Model, filter_col)
+        try:
+            query = query.filter(attr.ilike(f"%{filter_val}%"))
+        except Exception:
+            try:
+                query = query.filter(cast(attr, String).ilike(f"%{filter_val}%"))
+            except Exception:
+                pass
+
     if search_q:
         from sqlalchemy import or_, cast, String
         search_conds = []
@@ -1934,6 +2046,8 @@ def modulo(modulo_id):
         total=total,
         per_page=PER_PAGE,
         search_q=search_q,
+        filter_col=filter_col,
+        filter_val=filter_val,
         pendientes_sin_asignar=pendientes_sin_asignar if modulo_id == "registro-asignaciones" else [],
         pendientes_count=pendientes_count if modulo_id == "registro-asignaciones" else 0,
     )

@@ -92,16 +92,6 @@
     localStorage.setItem(FIRED, JSON.stringify(map));
   }
 
-  function notifyBrowser(title, body) {
-    if (!("Notification" in window)) return;
-    if (Notification.permission !== "granted") return;
-    try {
-      new Notification(title, { body: body || "" });
-    } catch (e) {
-      /* ignore */
-    }
-  }
-
   function toast(msg) {
     var t = document.getElementById("reminderToast");
     if (!t) return;
@@ -133,7 +123,6 @@
         if (!fired[key]) {
           fired[key] = now.toISOString();
           changed = true;
-          notifyBrowser("Recordatorio", r.title || "Recordatorio");
           toast("Recordatorio: " + (r.title || ""));
         }
       }
@@ -297,17 +286,6 @@
       state.viewMonth = n.getMonth();
       render();
       openDayPanel(toYMD(n.getFullYear(), n.getMonth(), n.getDate()));
-    });
-
-    document.getElementById("calNotifyBtn")?.addEventListener("click", function () {
-      if (!("Notification" in window)) {
-        toast("Tu navegador no soporta notificaciones.");
-        return;
-      }
-      Notification.requestPermission().then(function (p) {
-        if (p === "granted") toast("Avisos activados.");
-        else toast("Permiso denegado. Activa notificaciones en el navegador.");
-      });
     });
 
     document.getElementById("calDayClose")?.addEventListener("click", closeDayPanel);

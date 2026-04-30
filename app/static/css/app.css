@@ -1326,6 +1326,157 @@ html.nav-completing body.nav-completing-done .nav-progress,
   margin-bottom: 0;
 }
 
+/* ========== Responsive (móvil) ========== */
+@media (max-width: 900px) {
+  /* Dashboard: sidebar pasa a barra superior horizontal */
+  .dashboard-layout {
+    flex-direction: column;
+    min-height: auto;
+  }
+  .dashboard-sidebar {
+    width: 100%;
+    padding: 0.75rem 0;
+    border-right: none;
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .dashboard-sidebar .sidebar-brand,
+  .dashboard-sidebar .sidebar-section-title {
+    display: none;
+  }
+  .dashboard-sidebar .modulos.modulos-vertical {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0 0.75rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x proximity;
+  }
+  .dashboard-sidebar .modulos.modulos-vertical > li {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+  .modulos-vertical .modulo-link {
+    padding: 0.55rem 0.75rem;
+    border-left: none;
+    border-radius: 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    white-space: nowrap;
+  }
+  .modulos-vertical .modulo-icon {
+    width: 34px;
+    height: 34px;
+  }
+  .dashboard-center {
+    padding: 1rem;
+    overflow-x: visible;
+  }
+  .dashboard-content-distribution {
+    grid-template-columns: 1fr;
+  }
+  .widget-chart {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Nav superior: compactar */
+  .nav {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.5rem 0.75rem;
+    min-height: auto;
+  }
+  .nav-user-wrap {
+    display: none;
+  }
+  .nav-link span {
+    display: none;
+  }
+  .nav-link {
+    padding: 0.45rem 0.55rem;
+  }
+
+  /* Módulos: tabla -> tarjetas */
+  .modulo-table-wrap {
+    overflow-x: visible;
+  }
+  .modulo-table {
+    border: 0;
+  }
+  .modulo-table thead {
+    display: none;
+  }
+  .modulo-table tbody tr {
+    display: block;
+    margin: 0 0 0.9rem;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radio-lg);
+    background: var(--glass-bg);
+    box-shadow: var(--glass-shadow);
+    overflow: hidden;
+  }
+  .modulo-table tbody td {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.9rem;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    text-align: left;
+  }
+  .modulo-table tbody td::before {
+    content: attr(data-label);
+    flex: 0 0 45%;
+    color: var(--app-text-muted);
+    font-weight: 700;
+    font-size: 0.78rem;
+  }
+  .modulo-table tbody td:last-child {
+    border-bottom: 0;
+  }
+  .modulo-table .td-actions {
+    justify-content: flex-end;
+  }
+  .modulo-table .td-actions::before {
+    content: "Acciones";
+    margin-right: auto;
+  }
+
+  /* Reducir costo visual en móvil */
+  .app-bg,
+  .app-bg__mesh {
+    animation: none !important;
+  }
+  .app-bg__grid {
+    opacity: 0.25;
+  }
+  .dashboard-sidebar,
+  .widget-chart,
+  .modulo-form-wrap {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* Módulos: toolbar y filtros más cómodos */
+  .modulo-search-wrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .modulo-search-label {
+    margin-bottom: 0.15rem;
+  }
+  .modulo-actions {
+    gap: 0.5rem;
+  }
+  .modulo-pagination-info {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
 /* —— Calendario recordatorios (dashboard) —— */
 .reminders-widget-header {
   display: flex;
