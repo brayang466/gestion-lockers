@@ -41,10 +41,11 @@
         </select>
         {% else %}
         <input type="{{ f.type }}" id="f_{{ f.name }}" name="{{ f.name }}"
-               {% if f.type == 'number' %}value="1"{% elif f.name == 'area' and default_area is defined %}value="{{ default_area or '' }}"{% elif f.get('default') is defined %}value="{{ f.default }}"{% endif %}
+               {% if f.type == 'number' %}value="1" min="1" step="1"{% elif f.name == 'area' and default_area is defined %}value="{{ default_area or '' }}"{% elif f.get('default') is defined %}value="{{ f.default }}"{% endif %}
                {% if f.get('readonly') %}readonly{% endif %}
                {% if (modulo_id == 'registro-personal' or modulo_id == 'ingreso-lockers') and f.name == 'area' %}readonly{% endif %}
                {% if f.get('required') %}required{% endif %}
+               {% if f.get('numeric_only') and not f.get('readonly') %}data-numeric-only="1" inputmode="numeric" autocomplete="off"{% endif %}
                class="form-input{% if f.get('readonly') %} input-readonly{% endif %}{% if (modulo_id == 'registro-personal' or modulo_id == 'ingreso-lockers') and f.name == 'area' %} input-readonly{% endif %}">
         {% endif %}
       </div>

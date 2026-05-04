@@ -364,6 +364,28 @@ def _parse_date(s):
         return None
 
 
+def _digits_only_field_error(form_fields, form):
+    """Valida campos con numeric_only: solo dígitos (texto) o entero con signo opcional (type number)."""
+    for f in form_fields:
+        if not f.get("numeric_only"):
+            continue
+        name = f.get("name")
+        if not name or f.get("type") == "hidden":
+            continue
+        val = (form.get(name) or "").strip()
+        if not val:
+            continue
+        if f.get("type") == "number":
+            if not val.isdigit():
+                label = (f.get("label") or name).replace('"', "'")
+                return f"El campo «{label}» solo admite números (sin letras ni símbolos)."
+        else:
+            if not val.isdigit():
+                label = (f.get("label") or name).replace('"', "'")
+                return f"El campo «{label}» solo admite números (sin letras ni símbolos)."
+    return None
+
+
 # Opciones estándar para campos de talla (formularios de encabezado y módulos)
 TALLAS_SELECT_OPCIONES = ["", "M", "L", "S", "XXL", "XL", "XXXL", "XS", "S-M-L-XL"]
 
@@ -373,6 +395,7 @@ MODULOS_CONFIG = {
         "titulo": "Base de Lockers",
         "icon": "locker",
         "area_key": "area",
+        "no_crear": True,
         "columnas": [
             {"key": "codigo", "label": "Código"},
             {"key": "area", "label": "Área"},
@@ -382,7 +405,7 @@ MODULOS_CONFIG = {
             {"key": "unidad", "label": "Unidad"},
         ],
         "form_fields": [
-            {"name": "codigo", "label": "Código", "type": "text", "required": True},
+            {"name": "codigo", "label": "Código", "type": "text", "required": True, "numeric_only": True},
             {"name": "area", "label": "Área", "type": "text"},
             {"name": "subarea", "label": "Subárea (ubic. Desposte)", "type": "text"},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
@@ -408,7 +431,7 @@ MODULOS_CONFIG = {
             {"key": "estado", "label": "Estado"},
         ],
         "form_fields": [
-            {"name": "codigo", "label": "Código", "type": "text", "required": True},
+            {"name": "codigo", "label": "Código", "type": "text", "required": True, "numeric_only": True},
             {"name": "area", "label": "Área", "type": "text"},
             {"name": "subarea", "label": "Subárea (ubic. Desposte)", "type": "text"},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
@@ -428,12 +451,12 @@ MODULOS_CONFIG = {
         "columnas": [
             {"key": "codigo", "label": "CODIGO"},
             {"key": "area", "label": "AREA"},
-            {"key": "area_locker", "label": "AREA LOCKER"},
+            {"key": "area_locker", "label": "UBICACIÓN"},
         ],
         "form_fields": [
-            {"name": "codigo", "label": "CODIGO", "type": "text", "required": True},
+            {"name": "codigo", "label": "CODIGO", "type": "text", "required": True, "numeric_only": True},
             {"name": "area", "label": "AREA", "type": "select", "options": []},
-            {"name": "area_locker", "label": "AREA LOCKER", "type": "text"},
+            {"name": "area_locker", "label": "UBICACIÓN", "type": "text"},
         ],
         "date_fields": [],
     },
@@ -442,6 +465,7 @@ MODULOS_CONFIG = {
         "titulo": "Base de Dotaciones",
         "icon": "package",
         "area_key": "area_uso",
+        "no_crear": True,
         "columnas": [
             {"key": "codigo", "label": "Código"},
             {"key": "area_uso", "label": "Área uso"},
@@ -450,8 +474,8 @@ MODULOS_CONFIG = {
             {"key": "estado", "label": "Estado"},
         ],
         "form_fields": [
-            {"name": "codigo", "label": "Código", "type": "text"},
-            {"name": "cantidad", "label": "Cantidad", "type": "number"},
+            {"name": "codigo", "label": "Código", "type": "text", "numeric_only": True},
+            {"name": "cantidad", "label": "Cantidad", "type": "number", "numeric_only": True},
             {"name": "area_uso", "label": "Área uso", "type": "text"},
             {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "estado", "label": "Estado", "type": "select", "options": ["ASIGNADA", "DISPONIBLE", "NO EXISTE"]},
@@ -486,20 +510,28 @@ MODULOS_CONFIG = {
             {"key": "identificacion", "label": "Documento"},
             {"key": "area", "label": "Área"},
             {"key": "area_lockers", "label": "Área Lockers"},
+            {"key": "codigo_lockets", "label": "Cód. Lockers"},
+            {"key": "codigo_dotacion", "label": "Cód. Dotación"},
+            {"key": "codigo_seca_botas", "label": "Cód. Seca Botas"},
+            {"key": "fecha_asignacion", "label": "Fecha asignación"},
+            {"key": "fecha_entrega", "label": "Fecha entrega"},
             {"key": "estado", "label": "Estado"},
         ],
         "form_fields": [
+            {"name": "fecha_asignacion", "label": "Fecha de asignación", "type": "date", "required": True},
+            {"name": "fecha_entrega", "label": "Fecha de entrega", "type": "date", "required": True},
+            {"name": "codigo_seca_botas", "label": "Código Seca Botas", "type": "text", "required": True, "numeric_only": True},
             {"name": "operario", "label": "Nombre", "type": "text", "required": True},
-            {"name": "identificacion", "label": "Documento", "type": "text", "required": True},
-            {"name": "area", "label": "Área", "type": "text"},
+            {"name": "identificacion", "label": "Documento", "type": "text", "required": True, "numeric_only": True},
+            {"name": "area", "label": "Área", "type": "hidden"},
             {"name": "talla_operarios", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "area_lockers", "label": "Área Lockers", "type": "text"},
-            {"name": "codigo_lockets", "label": "Código lockers", "type": "text"},
-            {"name": "codigo_dotacion", "label": "Código dotación", "type": "text"},
+            {"name": "codigo_lockets", "label": "Código lockers", "type": "text", "required": True},
+            {"name": "codigo_dotacion", "label": "Código dotación", "type": "text", "required": True},
             {"name": "estado", "label": "Estado", "type": "select", "options": ["ACTIVO", "INACTIVO", "PENDIENTE"]},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
-        "date_fields": [],
+        "date_fields": ["fecha_asignacion", "fecha_entrega"],
     },
     "personal-presupuestado": {
         "model": PersonalPresupuestado,
@@ -515,9 +547,9 @@ MODULOS_CONFIG = {
         ],
         "form_fields": [
             {"name": "area", "label": "Área", "type": "text"},
-            {"name": "aprobados", "label": "Aprobados", "type": "number"},
-            {"name": "contratados", "label": "Contratados", "type": "number"},
-            {"name": "por_contratar", "label": "Por contratar", "type": "number"},
+            {"name": "aprobados", "label": "Aprobados", "type": "number", "numeric_only": True},
+            {"name": "contratados", "label": "Contratados", "type": "number", "numeric_only": True},
+            {"name": "por_contratar", "label": "Por contratar", "type": "number", "numeric_only": True},
         ],
         "date_fields": [],
     },
@@ -546,9 +578,9 @@ MODULOS_CONFIG = {
             {"name": "fecha_asignacion", "label": "Fecha asignación", "type": "date"},
             {"name": "fecha_entrega", "label": "Fecha entrega", "type": "date"},
             {"name": "operario", "label": "Operario", "type": "text"},
-            {"name": "identificacion", "label": "Identificación", "type": "text", "required": True},
+            {"name": "identificacion", "label": "Identificación", "type": "text", "required": True, "numeric_only": True},
             {"name": "codigo_lockets", "label": "Código lockers", "type": "text"},
-            {"name": "codigo_seca_botas", "label": "Cód. Seca Botas", "type": "text"},
+            {"name": "codigo_seca_botas", "label": "Cód. Seca Botas", "type": "text", "numeric_only": True},
             {"name": "area", "label": "Área", "type": "text"},
             {"name": "talla_operarios", "label": "Talla operarios", "type": "select", "options": TALLAS_SELECT_OPCIONES},
             {"name": "talla_dotacion", "label": "Talla dotación", "type": "select", "options": TALLAS_SELECT_OPCIONES},
@@ -576,7 +608,7 @@ MODULOS_CONFIG = {
             {"key": "observaciones", "label": "Observaciones"},
         ],
         "form_fields": [
-            {"name": "identificacion", "label": "Identificación", "type": "text"},
+            {"name": "identificacion", "label": "Identificación", "type": "text", "numeric_only": True},
             {"name": "codigo_dotacion", "label": "Código dotación", "type": "text"},
             {"name": "fecha_retiro", "label": "Fecha retiro", "type": "date"},
             {"name": "operario", "label": "Operario", "type": "text"},
@@ -599,8 +631,8 @@ MODULOS_CONFIG = {
             {"key": "fecha_ingreso", "label": "Fecha ingreso"},
         ],
         "form_fields": [
-            {"name": "codigo", "label": "Código", "type": "text"},
-            {"name": "cantidad", "label": "Cantidad", "type": "number"},
+            {"name": "codigo", "label": "Código", "type": "text", "numeric_only": True},
+            {"name": "cantidad", "label": "Cantidad", "type": "number", "numeric_only": True},
             {"name": "fecha_ingreso", "label": "Fecha ingreso", "type": "date"},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
@@ -617,9 +649,9 @@ MODULOS_CONFIG = {
             {"key": "fecha_ingreso", "label": "Fecha ingreso"},
         ],
         "form_fields": [
-            {"name": "codigo", "label": "Código", "type": "text"},
+            {"name": "codigo", "label": "Código", "type": "text", "numeric_only": True},
             {"name": "descripcion", "label": "Descripción", "type": "text"},
-            {"name": "cantidad", "label": "Cantidad", "type": "number"},
+            {"name": "cantidad", "label": "Cantidad", "type": "number", "numeric_only": True},
             {"name": "fecha_ingreso", "label": "Fecha ingreso", "type": "date"},
             {"name": "observaciones", "label": "Observaciones", "type": "textarea"},
         ],
@@ -1317,6 +1349,16 @@ def _registro_form_view(modulo_id):
     can_edit = _user_can_edit()
     if request.method == "POST" and can_edit:
         if modulo_id == "ingreso-dotacion":
+            ne_err = _digits_only_field_error(_FORM_INGRESO_DOTACION, request.form)
+            if ne_err:
+                flash(ne_err, "error")
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Ingreso de Dotación",
+                    form_fields=_FORM_INGRESO_DOTACION,
+                    can_edit=can_edit,
+                )
             codigo = (request.form.get("codigo") or "").strip()
             cantidad = request.form.get("cantidad", type=int) or 0
             talla = (request.form.get("talla") or "").strip()
@@ -1340,6 +1382,17 @@ def _registro_form_view(modulo_id):
             flash("Dotación registrada en Base de Dotaciones.", "success")
             return redirect(url_for("main.registro_form", modulo_id=modulo_id))
         if modulo_id == "registro-personal":
+            ne_err = _digits_only_field_error(_FORM_REGISTRO_PERSONAL, request.form)
+            if ne_err:
+                flash(ne_err, "error")
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Registro de Personal",
+                    form_fields=_FORM_REGISTRO_PERSONAL,
+                    can_edit=can_edit,
+                    default_area=current_area,
+                )
             nombre = (request.form.get("nombre") or "").strip()
             documento = (request.form.get("documento") or "").strip()
             if not nombre or not documento:
@@ -1377,10 +1430,22 @@ def _registro_form_view(modulo_id):
             flash("Personal registrado. Aparece en Personal Registrado hasta que se asigne locker o dotación.", "success")
             return redirect(url_for("main.modulo", modulo_id="registro-personal"))
         if modulo_id == "ingreso-lockers":
+            ne_err = _digits_only_field_error(_FORM_INGRESO_LOCKERS, request.form)
+            if ne_err:
+                flash(ne_err, "error")
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Ingreso de Lockers",
+                    form_fields=_FORM_INGRESO_LOCKERS,
+                    can_edit=can_edit,
+                    default_area=current_area,
+                )
             codigo = (request.form.get("codigo") or "").strip()
             area = (request.form.get("area") or "").strip() or current_area
             area_lockers = (request.form.get("area_lockers") or "").strip()
-            cantidad = max(1, request.form.get("cantidad", type=int) or 1)
+            cantidad_raw = (request.form.get("cantidad") or "").strip() or "1"
+            cantidad = max(1, int(cantidad_raw))
             if not codigo:
                 flash("El código es obligatorio.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
@@ -1390,7 +1455,7 @@ def _registro_form_view(modulo_id):
             if cantidad > 1:
                 flash("Cada código debe ser único. Indique cantidad 1 o registre otro código en un envío aparte.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
-            estado = _normalize_estado_base_lockers((request.form.get("estado") or "disponible").strip())
+            estado = _normalize_estado_base_lockers("DISPONIBLE")
             for _ in range(cantidad):
                 obj = BaseLockers(codigo=codigo, area=area, subarea="", area_lockers=area_lockers, estado=estado)
                 db.session.add(obj)
@@ -1430,8 +1495,8 @@ _INGRESO_DOTACION_AREA_OPCIONES_ORDER = (
 
 # Campos para los formularios de registro independientes (no almacenan en su tabla original)
 _FORM_INGRESO_DOTACION = [
-    {"name": "codigo", "label": "Código", "type": "text", "required": True},
-    {"name": "cantidad", "label": "Cantidad", "type": "number"},
+    {"name": "codigo", "label": "Código", "type": "text", "required": True, "numeric_only": True},
+    {"name": "cantidad", "label": "Cantidad", "type": "number", "numeric_only": True},
     {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES, "required": True},
     {
         "name": "area",
@@ -1444,17 +1509,17 @@ _FORM_INGRESO_DOTACION = [
 ]
 _FORM_REGISTRO_PERSONAL = [
     {"name": "nombre", "label": "Nombre", "type": "text", "required": True},
-    {"name": "documento", "label": "Documento", "type": "text", "required": True},
+    {"name": "documento", "label": "Documento", "type": "text", "required": True, "numeric_only": True},
     {"name": "area", "label": "Área", "type": "text"},
     {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES, "required": True},
     {"name": "area_lockers", "label": "Área Lockers", "type": "select", "options": ["", "VESTIER HOMBRES", "VESTIER MUJERES", "ADMINISTRATIVO"]},
 ]
 _FORM_INGRESO_LOCKERS = [
-    {"name": "codigo", "label": "Código", "type": "text", "required": True},
-    {"name": "cantidad", "label": "Cantidad (lockers a agregar)", "type": "number"},
+    {"name": "codigo", "label": "Código de Locker", "type": "text", "required": True, "numeric_only": True},
     {"name": "area", "label": "Área", "type": "text"},
     {"name": "area_lockers", "label": "Área Lockers", "type": "select", "options": ["VESTIDOR HOMBRES", "VESTIDOR MUJERES", "ADMINISTRATIVOS"]},
-    {"name": "estado", "label": "Estado", "type": "select", "options": ["DISPONIBLE", "ASIGNADO", "VISITA"]},
+    {"name": "cantidad", "label": "Cantidad (Lockers a agregar)", "type": "number", "numeric_only": True},
+    {"name": "estado", "label": "Estado", "type": "text", "readonly": True, "default": "Disponible"},
 ]
 
 
@@ -1564,6 +1629,11 @@ def modulo(modulo_id):
                 if getattr(obj, area_key, None) != user_area:
                     flash("No puede editar registros de otra área.", "error")
                     return redirect(url_for("main.modulo", modulo_id=modulo_id))
+            ne_err = _digits_only_field_error(form_fields, request.form)
+            if ne_err:
+                flash(ne_err, "error")
+                session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
             old_cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip() if Model == RegistroAsignaciones else ""
             old_cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip() if Model == RegistroAsignaciones else ""
             for f in form_fields:
@@ -1575,6 +1645,9 @@ def modulo(modulo_id):
                     setattr(obj, name, int(val) if val != "" and val is not None else None)
                 else:
                     setattr(obj, name, (val or "").strip() if val is not None else "")
+            # Personal Pendiente: área fija (toma área actual; no editable) — excluye DESPOSTE
+            if modulo_id == "registro-personal" and Model == RegistroAsignaciones and current_area and current_area.strip().upper() != "DESPOSTE":
+                obj.area = current_area
             # Fechas obligatorias sin valor: usar hoy si aplica
             for df in date_fields:
                 if getattr(obj, df, None) is None and Model == RegistroAsignaciones and df == "fecha_asignacion":
@@ -1640,6 +1713,12 @@ def modulo(modulo_id):
         if config.get("no_crear"):
             return redirect(url_for("main.modulo", modulo_id=modulo_id))
 
+        ne_err = _digits_only_field_error(form_fields, request.form)
+        if ne_err:
+            flash(ne_err, "error")
+            session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+            return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+
         # Crear
         obj = Model()
         for f in form_fields:
@@ -1651,6 +1730,9 @@ def modulo(modulo_id):
                 setattr(obj, name, int(val) if val != "" and val is not None else None)
             else:
                 setattr(obj, name, (val or "").strip() if val is not None else "")
+        # Personal Pendiente: área fija (toma área actual; no editable) — excluye DESPOSTE
+        if modulo_id == "registro-personal" and Model == RegistroAsignaciones and current_area and current_area.strip().upper() != "DESPOSTE":
+            obj.area = current_area
         # Asignar área actual en módulos con area_key (Desposte: subáreas LYD/CAL/… → area=DESPOSTE + subarea)
         if area_key and current_area and hasattr(obj, area_key):
             if Model in (BaseLockers, LockerDisponibles):
@@ -1748,6 +1830,21 @@ def modulo(modulo_id):
                 scope = _registro_area_scope_filter(Model, current_area)
                 if scope is not None:
                     query = query.filter(scope)
+        elif Model == SecaBotasDisponibles:
+            ca_u = (current_area or "").strip().upper()
+            if ca_u == "DESPOSTE":
+                query = query.filter(false())
+            elif ca_u == "CALIDAD":
+                # Calidad: se filtra por ubicación (MUJ/ADM) en vez de área directa.
+                from sqlalchemy import or_
+                query = query.filter(
+                    or_(
+                        db.func.upper(db.func.trim(SecaBotasDisponibles.area_locker)).like("%MUJ%"),
+                        db.func.upper(db.func.trim(SecaBotasDisponibles.area_locker)).like("%ADM%"),
+                    )
+                )
+            else:
+                query = query.filter(db.func.upper(db.func.trim(SecaBotasDisponibles.area)) == ca_u)
         else:
             query = query.filter(getattr(Model, area_key) == current_area)
     # Personal Registrado: solo RegistroAsignaciones sin locker ni dotación asignados
@@ -1945,6 +2042,7 @@ def modulo(modulo_id):
 
     item_edit = None
     edit_data = {}
+    edit_preview = None
     edit_id = request.args.get("edit_id", type=int)
     if edit_id:
         item_edit = Model.query.get(edit_id)
@@ -1969,6 +2067,26 @@ def modulo(modulo_id):
                         edit_data[name] = val.strftime("%Y-%m-%d")
                     else:
                         edit_data[name] = val
+                # Personal Pendiente: fechas autollenadas con el día actual si vienen vacías (editable)
+                if modulo_id == "registro-personal":
+                    today = datetime.utcnow().date().isoformat()
+                    if not (edit_data.get("fecha_asignacion") or "").strip():
+                        edit_data["fecha_asignacion"] = today
+                    if not (edit_data.get("fecha_entrega") or "").strip():
+                        edit_data["fecha_entrega"] = today
+                if modulo_id == "registro-asignaciones":
+                    edit_preview = {
+                        "Identificación": edit_data.get("identificacion", ""),
+                        "Operario": edit_data.get("operario", ""),
+                        "Área": edit_data.get("area", ""),
+                        "Área lockers": edit_data.get("area_lockers", ""),
+                        "Cód. Dotación": edit_data.get("codigo_dotacion", ""),
+                        "Cód. Lockers": edit_data.get("codigo_lockets", ""),
+                        "Cód. Seca Botas": edit_data.get("codigo_seca_botas", ""),
+                        "Fecha asignación": edit_data.get("fecha_asignacion", ""),
+                        "Fecha entrega": edit_data.get("fecha_entrega", ""),
+                        "Estado": edit_data.get("estado", ""),
+                    }
         # Si hubo error de validación, usar datos del formulario guardados en sesión
         saved_form = session.pop("modulo_edit_form", {}).get(modulo_id)
         if saved_form:
@@ -2014,10 +2132,21 @@ def modulo(modulo_id):
                 q = q.filter(lf)
         opciones_locker = [r[0] for r in q.with_entities(LockerDisponibles.codigo).order_by(LockerDisponibles.codigo).all()]
     if "codigo_seca_botas" in form_field_names:
-        q_sb = SecaBotasDisponibles.query.filter(db.func.lower(SecaBotasDisponibles.estado) != "disponible")
+        q_sb = SecaBotasDisponibles.query.filter(db.func.lower(SecaBotasDisponibles.estado) == "disponible")
         # Regla solicitada: para áreas distintas de DESPOSTE, aplicar el filtro por área del código (no por Desposte)
         if current_area and current_area.strip().upper() != "DESPOSTE":
-            q_sb = q_sb.filter(db.func.upper(db.func.trim(SecaBotasDisponibles.area)) == current_area.strip().upper())
+            ca_u = current_area.strip().upper()
+            if ca_u == "CALIDAD":
+                # Calidad: el stock viene marcado en "Área locker" (p.ej. MUJ/ADM), no necesariamente como CAL en area.
+                from sqlalchemy import or_
+                q_sb = q_sb.filter(
+                    or_(
+                        db.func.upper(db.func.trim(SecaBotasDisponibles.area_locker)).like("%MUJ%"),
+                        db.func.upper(db.func.trim(SecaBotasDisponibles.area_locker)).like("%ADM%"),
+                    )
+                )
+            else:
+                q_sb = q_sb.filter(db.func.upper(db.func.trim(SecaBotasDisponibles.area)) == ca_u)
         opciones_seca_botas = [
             r[0]
             for r in q_sb.with_entities(SecaBotasDisponibles.codigo)
@@ -2035,6 +2164,7 @@ def modulo(modulo_id):
         items=items,
         item_edit=item_edit,
         edit_data=edit_data,
+        edit_preview=edit_preview,
         opciones_dotacion=opciones_dotacion,
         opciones_locker=opciones_locker,
         opciones_seca_botas=opciones_seca_botas,

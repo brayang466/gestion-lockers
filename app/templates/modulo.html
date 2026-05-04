@@ -101,12 +101,15 @@
 <div class="modulo-form-column">
   <div class="modulo-form-wrap">
     <h2>{{ 'Editar registro' if item_edit else 'Nuevo registro' }}</h2>
-    <form method="post" action="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="modulo-form">
+    <form method="post" action="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="modulo-form" {% if modulo_id == 'registro-personal' %}novalidate{% endif %}>
       {% if item_edit %}
       <input type="hidden" name="edit_id" value="{{ item_edit.id }}">
       {% endif %}
       <input type="hidden" name="page" value="{{ page }}">
       {% for f in form_fields %}
+      {% if f.type == 'hidden' %}
+      <input type="hidden" id="f_{{ f.name }}" name="{{ f.name }}" value="{{ edit_data.get(f.name, '') }}">
+      {% else %}
       <div class="form-group">
         <label for="f_{{ f.name }}">{{ f.label }}{% if f.required %} *{% endif %}</label>
         {% if f.type == 'textarea' %}
@@ -142,7 +145,8 @@
         <input type="{{ f.type }}" id="f_{{ f.name }}" name="{{ f.name }}"
                class="{% if f.name == 'estado' %}estado-input{% endif %}"
                value="{{ edit_data.get(f.name, '') }}"
-               {% if f.required %}required{% endif %}>
+               {% if f.required %}required{% endif %}
+               {% if f.get('numeric_only') %}data-numeric-only="1" inputmode="numeric" autocomplete="off"{% endif %}>
         {% endif %}
         {% if (modulo_id == 'registro-personal' or modulo_id == 'registro-asignaciones') and f.name == 'codigo_dotacion' %}
         <span id="estado-codigo-dotacion" class="codigo-estado" aria-live="polite"></span>
@@ -151,6 +155,7 @@
         <span id="estado-codigo-lockets" class="codigo-estado" aria-live="polite"></span>
         {% endif %}
       </div>
+      {% endif %}
       {% endfor %}
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Guardar</button>
@@ -162,15 +167,15 @@
 {% endif %}
 
 <div class="modulo-table-column">
-<div class="modulo-table-wrap">
-  <table class="modulo-table">
+<div class="modulo-table-wrap{% if modulo_id == 'registro-asignaciones' %} modulo-table-wrap--hide-x-scrollbar{% endif %}">
+  <table class="modulo-table{% if modulo_id == 'registro-asignaciones' %} modulo-table-asignaciones{% endif %}" {% if columnas|length >= 2 and not item_edit and not request.args.get('crear') %}data-enable-record-modal="1"{% endif %}>
     <thead>
       <tr>
         {% for col in columnas %}
-        <th>{{ col.label }}</th>
+        <th data-col-key="{{ col.key|e }}">{{ col.label }}</th>
         {% endfor %}
         {% if can_edit|default(true) %}
-        <th class="th-actions">Acciones</th>
+        <th class="th-actions" data-col-actions="1">Acciones</th>
         {% endif %}
       </tr>
     </thead>
@@ -187,9 +192,9 @@
       </tr>
       {% else %}
       {% for item in items %}
-      <tr>
+      <tr class="{% if columnas|length >= 2 and not item_edit and not request.args.get('crear') %}modulo-row-clickable{% endif %}" tabindex="{% if columnas|length >= 2 and not item_edit and not request.args.get('crear') %}0{% else %}-1{% endif %}">
         {% for col in columnas %}
-        <td data-label="{{ col.label }}">
+        <td data-col-key="{{ col.key|e }}" data-label="{{ col.label|e }}">
           {% if col.key == 'estado' %}
             {% set v = (item[col.key] or '')|string|upper %}
             {% if modulo_id == 'registro-asignaciones' and item.get('_estado_pendiente') %}
@@ -223,7 +228,7 @@
         </td>
         {% endfor %}
         {% if can_edit|default(true) %}
-        <td class="td-actions">
+        <td class="td-actions" data-col-actions="1">
         <a href="{{ url_for('main.modulo', modulo_id=modulo_id, edit_id=item.id, page=page, q=search_q or none, fcol=filter_col or none, fval=filter_val or none) }}" class="btn-editar" title="Editar">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
             Editar
@@ -275,6 +280,42 @@
   </div>
 </div>
 </div><!-- .modulo-page -->
+
+{% if columnas|length >= 2 and not item_edit and not request.args.get('crear') %}
+<div id="modalVerRegistro" class="modal-eliminar-overlay modal-ver-registro-overlay{% if modulo_id == 'registro-asignaciones' %} modal-ver-registro--dense{% endif %}" role="dialog" aria-modal="true" aria-labelledby="modalVerRegistroTitulo" hidden>
+  <div class="modal-eliminar-backdrop js-modal-ver-registro-backdrop"></div>
+  <div class="modal-eliminar-card modal-ver-registro-card{% if modulo_id == 'registro-asignaciones' %} modal-ver-registro-card--dense{% endif %}">
+    <div class="modal-eliminar-icon-wrap modal-ver-registro-icon-wrap">
+      <svg class="modal-eliminar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+    </div>
+    <h2 id="modalVerRegistroTitulo" class="modal-eliminar-titulo">Detalle del registro</h2>
+    <div id="modalVerRegistroBody" class="modal-ver-registro-body"></div>
+    <div class="modal-eliminar-actions">
+      <button type="button" class="btn btn-modal-cancelar js-modal-ver-registro-cerrar" id="modalVerRegistroCerrar">Cerrar</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if modulo_id == 'registro-personal' and can_edit|default(true) and item_edit %}
+<!-- Modal validación al guardar -->
+<div id="modalValidacion" class="modal-eliminar-overlay" role="dialog" aria-modal="true" aria-labelledby="modalValidacionTitulo" hidden>
+  <div class="modal-eliminar-backdrop"></div>
+  <div class="modal-eliminar-card">
+    <div class="modal-eliminar-icon-wrap">
+      <svg class="modal-eliminar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4m0 4h.01M10.29 3.86l-8.4 14.53A2 2 0 003.62 21h16.76a2 2 0 001.73-2.61l-8.4-14.53a2 2 0 00-3.42 0z"/>
+      </svg>
+    </div>
+    <h2 id="modalValidacionTitulo" class="modal-eliminar-titulo">No puedes guardar este registro</h2>
+    <p class="modal-eliminar-mensaje">Te falta rellenar lo siguiente:</p>
+    <ul id="modalValidacionLista" class="modal-validacion-list"></ul>
+    <div class="modal-eliminar-actions">
+      <button type="button" class="btn btn-modal-cancelar" id="modalValidacionCerrar">Entendido</button>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <script>
 (function() {
@@ -380,6 +421,177 @@
     if (inpLock) inpLock.addEventListener('input', debounceVerificar);
     if ((inpDot && inpDot.value) || (inpLock && inpLock.value)) actualizarEstadosCodigos();
   }
+
+  // Validación Personal Pendiente (sin popup del navegador): resalta campos y muestra modal
+  var modalValidacion = document.getElementById('modalValidacion');
+  var modalValidacionLista = document.getElementById('modalValidacionLista');
+  var modalValidacionCerrar = document.getElementById('modalValidacionCerrar');
+  function openModalValidacion(items) {
+    if (!modalValidacion || !modalValidacionLista || !modalValidacionCerrar) return;
+    modalValidacionLista.innerHTML = '';
+    items.forEach(function(t) {
+      var li = document.createElement('li');
+      li.textContent = t;
+      modalValidacionLista.appendChild(li);
+    });
+    modalValidacion.removeAttribute('hidden');
+    modalValidacion.setAttribute('data-open', 'true');
+    modalValidacionCerrar.focus && modalValidacionCerrar.focus();
+  }
+  function closeModalValidacion() {
+    if (!modalValidacion) return;
+    modalValidacion.setAttribute('data-open', 'false');
+    modalValidacion.setAttribute('hidden', '');
+  }
+  if (modalValidacion && modalValidacionCerrar) {
+    modalValidacion.querySelector('.modal-eliminar-backdrop').addEventListener('click', closeModalValidacion);
+    modalValidacionCerrar.addEventListener('click', closeModalValidacion);
+    modalValidacion.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') closeModalValidacion();
+    });
+  }
+  var formPersonal = document.querySelector('.modulo-form');
+  if (formPersonal && "{{ modulo_id }}" === "registro-personal") {
+    formPersonal.setAttribute('novalidate', 'novalidate');
+    var requiredFields = [
+      { name: 'fecha_asignacion', label: 'Fecha de asignación' },
+      { name: 'fecha_entrega', label: 'Fecha de entrega' },
+      { name: 'codigo_seca_botas', label: 'Código Seca Botas' },
+      { name: 'codigo_lockets', label: 'Código lockers' },
+      { name: 'codigo_dotacion', label: 'Código dotación' }
+    ];
+    function cleanInvalid() {
+      formPersonal.querySelectorAll('.input-invalid').forEach(function(el) { el.classList.remove('input-invalid'); });
+    }
+    formPersonal.addEventListener('submit', function(e) {
+      cleanInvalid();
+      var missingLabels = [];
+      requiredFields.forEach(function(fld) {
+        var el = formPersonal.querySelector('[name=\"' + fld.name + '\"]');
+        if (!el) return;
+        var v = (el.value || '').trim();
+        if (!v) {
+          missingLabels.push(fld.label);
+          el.classList.add('input-invalid');
+        }
+      });
+      if (missingLabels.length) {
+        e.preventDefault();
+        openModalValidacion(missingLabels);
+      }
+    });
+  }
+
+  // Registro de asignaciones (edición): en la tabla solo se ve la columna del campo enfocado
+  var asignacionesEditMode = "{{ modulo_id }}" === "registro-asignaciones" && {{ 'true' if item_edit else 'false' }};
+  var tablaAsig = document.querySelector("table.modulo-table-asignaciones");
+  var formAsg = document.querySelector(".modulo-form-column .modulo-form");
+  if (asignacionesEditMode && tablaAsig && formAsg) {
+    var fieldToCol = {
+      codigo_dotacion: "codigo_dotacion",
+      fecha_entrega: "fecha_entrega",
+      operario: "operario",
+      identificacion: "identificacion",
+      codigo_lockets: "codigo_lockets",
+      codigo_seca_botas: "codigo_seca_botas",
+      area: "area",
+      talla_operarios: "talla_operarios",
+      talla_dotacion: "talla_dotacion",
+      area_lockers: "area_lockers",
+      estado: "estado"
+    };
+    function aplicarColumnaEditada(fieldName) {
+      var col = fieldToCol[fieldName];
+      var mostrarTodas = !col;
+      tablaAsig.classList.add("js-asignaciones-edit-focus");
+      tablaAsig.querySelectorAll("[data-col-key]").forEach(function(cell) {
+        cell.classList.toggle("col-edit-hidden", !mostrarTodas && cell.getAttribute("data-col-key") !== col);
+      });
+    }
+    formAsg.addEventListener("focusin", function(e) {
+      var t = e.target;
+      if (!t || !t.name) return;
+      aplicarColumnaEditada(t.name);
+    });
+    var primero = formAsg.querySelector('input[name]:not([type="hidden"]), select[name], textarea[name]');
+    if (primero && primero.name) aplicarColumnaEditada(primero.name);
+  }
+
+  // Modal detalle de fila (módulos con 2+ columnas de datos)
+  var modalVer = document.getElementById("modalVerRegistro");
+  var modalVerCerrar = document.getElementById("modalVerRegistroCerrar");
+  var tablaModulo = document.querySelector(".modulo-table-wrap table.modulo-table[data-enable-record-modal='1']");
+  var modalDetalleAsignaciones = "{{ modulo_id }}" === "registro-asignaciones";
+  function openModalVerRegistro(tr) {
+    if (!modalVer || !tr) return;
+    var bodyEl = modalVer.querySelector(".modal-ver-registro-body");
+    if (!bodyEl) return;
+    bodyEl.innerHTML = "";
+    var table = tr.closest("table");
+    var thByKey = {};
+    if (table && table.tHead) {
+      table.tHead.querySelectorAll("th[data-col-key]").forEach(function(th) {
+        var k = th.getAttribute("data-col-key");
+        if (k) thByKey[k] = (th.textContent || "").replace(/\s+/g, " ").trim();
+      });
+    }
+    var cells = tr.cells ? Array.prototype.slice.call(tr.cells) : [];
+    cells.forEach(function(td) {
+      if (td.tagName !== "TD") return;
+      if (td.classList.contains("td-actions") || td.getAttribute("data-col-actions")) return;
+      var key = td.getAttribute("data-col-key") || "";
+      var label = (td.getAttribute("data-label") || "").trim() || thByKey[key] || key || "Campo";
+      var row = document.createElement("div");
+      row.className = "modal-ver-registro-field" + (modalDetalleAsignaciones ? " modal-ver-registro-field--compact" : "");
+      var lab = document.createElement("div");
+      lab.className = "modal-ver-registro-label";
+      lab.textContent = label;
+      var val = document.createElement("div");
+      val.className = "modal-ver-registro-value";
+      val.textContent = (td.textContent || "").replace(/\s+/g, " ").trim() || "—";
+      row.appendChild(lab);
+      row.appendChild(val);
+      bodyEl.appendChild(row);
+    });
+    if (!bodyEl.children.length) {
+      var empty = document.createElement("p");
+      empty.className = "modal-ver-registro-empty";
+      empty.textContent = "No se pudo leer la fila seleccionada.";
+      bodyEl.appendChild(empty);
+    }
+    modalVer.removeAttribute("hidden");
+    modalVer.setAttribute("data-open", "true");
+    if (modalVerCerrar && modalVerCerrar.focus) modalVerCerrar.focus();
+  }
+  function closeModalVerRegistro() {
+    if (!modalVer) return;
+    modalVer.setAttribute("data-open", "false");
+    modalVer.setAttribute("hidden", "");
+  }
+  if (modalVer && tablaModulo && modalVerCerrar) {
+    var bd = modalVer.querySelector(".js-modal-ver-registro-backdrop");
+    if (bd) bd.addEventListener("click", closeModalVerRegistro);
+    modalVer.querySelectorAll(".js-modal-ver-registro-cerrar").forEach(function(b) {
+      b.addEventListener("click", closeModalVerRegistro);
+    });
+    modalVer.addEventListener("keydown", function(e) {
+      if (e.key === "Escape") closeModalVerRegistro();
+    });
+    tablaModulo.addEventListener("click", function(e) {
+      var tr = e.target.closest("tbody tr.modulo-row-clickable");
+      if (!tr || !tablaModulo.contains(tr)) return;
+      if (e.target.closest(".td-actions, a, button, input, label")) return;
+      openModalVerRegistro(tr);
+    });
+    tablaModulo.addEventListener("keydown", function(e) {
+      var tr = e.target.closest("tbody tr.modulo-row-clickable");
+      if (!tr || !tablaModulo.contains(tr)) return;
+      if ((e.key === "Enter" || e.key === " ") && !e.target.closest(".td-actions")) {
+        e.preventDefault();
+        openModalVerRegistro(tr);
+      }
+    });
+  }
 })();
 </script>
 
@@ -395,4 +607,49 @@
   });
 })();
 </script>
+
+{% if modulo_id == 'registro-personal' and can_edit|default(true) and item_edit %}
+<script>
+(function() {
+  var f = document.querySelector('.modulo-form');
+  if (!f) return;
+  function cleanInvalid() {
+    var els = f.querySelectorAll('.input-invalid');
+    for (var i = 0; i < els.length; i++) els[i].classList.remove('input-invalid');
+  }
+  function markInvalid(el) {
+    try { el.classList.add('input-invalid'); } catch (e) {}
+  }
+  function bindClearOnInput(el) {
+    if (!el) return;
+    el.addEventListener('input', function() { el.classList.remove('input-invalid'); });
+    el.addEventListener('change', function() { el.classList.remove('input-invalid'); });
+  }
+
+  var requiredNames = ['fecha_asignacion','fecha_entrega','codigo_seca_botas','codigo_lockets','codigo_dotacion'];
+  for (var i = 0; i < requiredNames.length; i++) {
+    bindClearOnInput(f.querySelector('[name=\"' + requiredNames[i] + '\"]'));
+  }
+
+  f.addEventListener('submit', function(e) {
+    cleanInvalid();
+    var missing = 0;
+    for (var i = 0; i < requiredNames.length; i++) {
+      var name = requiredNames[i];
+      var el = f.querySelector('[name=\"' + name + '\"]');
+      if (!el) continue;
+      var v = (el.value || '').trim();
+      if (!v) {
+        missing++;
+        markInvalid(el);
+      }
+    }
+    if (missing) {
+      e.preventDefault();
+      // Sin popup: solo resalta campos faltantes y bloquea guardado
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

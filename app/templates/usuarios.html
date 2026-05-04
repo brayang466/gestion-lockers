@@ -69,13 +69,13 @@
         <table class="modulo-table usuarios-table">
             <thead>
                 <tr>
-                    <th>Nombre</th>
-                    <th>Correo</th>
-                    <th>Rol</th>
-                    <th>Área</th>
-                    <th>Estado</th>
-                    <th>Fecha de registro</th>
-                    <th class="th-actions">Acciones</th>
+                    <th data-col-key="nombre">Nombre</th>
+                    <th data-col-key="email">Correo</th>
+                    <th data-col-key="rol">Rol</th>
+                    <th data-col-key="area">Área</th>
+                    <th data-col-key="estado">Estado</th>
+                    <th data-col-key="fecha">Fecha de registro</th>
+                    <th class="th-actions" data-col-actions="1">Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -85,22 +85,22 @@
                 </tr>
                 {% else %}
                 {% for u in users %}
-                <tr>
-                    <td class="cell-nombre">{{ u.nombre or '—' }}</td>
-                    <td class="cell-email">{{ u.email or '—' }}</td>
-                    <td class="cell-rol">
+                <tr class="{% if not item_edit %}modulo-row-clickable{% endif %}" tabindex="{% if not item_edit %}0{% else %}-1{% endif %}">
+                    <td class="cell-nombre" data-col-key="nombre" data-label="Nombre">{{ u.nombre or '—' }}</td>
+                    <td class="cell-email" data-col-key="email" data-label="Correo">{{ u.email or '—' }}</td>
+                    <td class="cell-rol" data-col-key="rol" data-label="Rol">
                         <span class="badge badge-{{ u.rol or 'usuario' }}">{{ 'Super Administrador' if (u.rol or 'usuario')|lower == 'superadmin' else (u.rol or 'usuario')|capitalize }}</span>
                     </td>
-                    <td class="cell-area">{% if (u.rol or '')|lower in ('superadmin', 'admin') %}NO APLICA{% else %}{{ (u.area or '—')|upper }}{% endif %}</td>
-                    <td class="cell-activo">
+                    <td class="cell-area" data-col-key="area" data-label="Área">{% if (u.rol or '')|lower in ('superadmin', 'admin') %}NO APLICA{% else %}{{ (u.area or '—')|upper }}{% endif %}</td>
+                    <td class="cell-activo" data-col-key="estado" data-label="Estado">
                         {% if u.activo %}
                         <span class="estado disponible">Activo</span>
                         {% else %}
                         <span class="estado ocupado">Inactivo</span>
                         {% endif %}
                     </td>
-                    <td class="cell-fecha">{{ u.creado_en.strftime('%d/%m/%Y %H:%M') if u.creado_en else '—' }}</td>
-                    <td class="td-actions">
+                    <td class="cell-fecha" data-col-key="fecha" data-label="Fecha de registro">{{ u.creado_en.strftime('%d/%m/%Y %H:%M') if u.creado_en else '—' }}</td>
+                    <td class="td-actions" data-col-actions="1">
                         <a href="{{ url_for('main.usuarios', edit_id=u.id) }}" class="btn-accion btn-editar" title="Editar información">
                             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                             Editar
@@ -128,6 +128,23 @@
             </tbody>
         </table>
     </div>
+
+    {% if not item_edit %}
+    <!-- Modal detalle de usuario (fila) -->
+    <div id="modalVerRegistro" class="modal-eliminar-overlay modal-ver-registro-overlay" role="dialog" aria-modal="true" aria-labelledby="modalVerRegistroTitulo" hidden>
+        <div class="modal-eliminar-backdrop js-modal-ver-registro-backdrop"></div>
+        <div class="modal-eliminar-card modal-ver-registro-card">
+            <div class="modal-eliminar-icon-wrap modal-ver-registro-icon-wrap">
+                <svg class="modal-eliminar-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <h2 id="modalVerRegistroTitulo" class="modal-eliminar-titulo">Detalle del registro</h2>
+            <div id="modalVerRegistroBody" class="modal-ver-registro-body"></div>
+            <div class="modal-eliminar-actions">
+                <button type="button" class="btn btn-modal-cancelar js-modal-ver-registro-cerrar" id="modalVerRegistroCerrar">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Modal Activar / Inactivar -->
     <div id="modalToggleEstado" class="modal-toggle-overlay" role="dialog" aria-modal="true" aria-labelledby="modalToggleTitulo" hidden>
@@ -195,6 +212,80 @@
             var form = this.closest('form.form-toggle-activo');
             if (form) openModal(form);
         });
+    });
+})();
+
+(function() {
+    var modalVer = document.getElementById('modalVerRegistro');
+    var modalVerCerrar = document.getElementById('modalVerRegistroCerrar');
+    var tabla = document.querySelector('table.usuarios-table');
+    if (!modalVer || !modalVerCerrar || !tabla) return;
+    function openModalVerRegistro(tr) {
+        if (!modalVer || !tr) return;
+        var bodyEl = modalVer.querySelector('.modal-ver-registro-body');
+        if (!bodyEl) return;
+        bodyEl.innerHTML = '';
+        var table = tr.closest('table');
+        var thByKey = {};
+        if (table && table.tHead) {
+            table.tHead.querySelectorAll('th[data-col-key]').forEach(function(th) {
+                var k = th.getAttribute('data-col-key');
+                if (k) thByKey[k] = (th.textContent || '').replace(/\s+/g, ' ').trim();
+            });
+        }
+        var cells = tr.cells ? Array.prototype.slice.call(tr.cells) : [];
+        cells.forEach(function(td) {
+            if (td.tagName !== 'TD') return;
+            if (td.classList.contains('td-actions') || td.getAttribute('data-col-actions')) return;
+            var key = td.getAttribute('data-col-key') || '';
+            var label = (td.getAttribute('data-label') || '').trim() || thByKey[key] || key || 'Campo';
+            var row = document.createElement('div');
+            row.className = 'modal-ver-registro-field';
+            var lab = document.createElement('div');
+            lab.className = 'modal-ver-registro-label';
+            lab.textContent = label;
+            var val = document.createElement('div');
+            val.className = 'modal-ver-registro-value';
+            val.textContent = (td.textContent || '').replace(/\s+/g, ' ').trim() || '—';
+            row.appendChild(lab);
+            row.appendChild(val);
+            bodyEl.appendChild(row);
+        });
+        if (!bodyEl.children.length) {
+            var empty = document.createElement('p');
+            empty.className = 'modal-ver-registro-empty';
+            empty.textContent = 'No se pudo leer la fila seleccionada.';
+            bodyEl.appendChild(empty);
+        }
+        modalVer.removeAttribute('hidden');
+        modalVer.setAttribute('data-open', 'true');
+        modalVerCerrar.focus();
+    }
+    function closeModalVerRegistro() {
+        modalVer.setAttribute('data-open', 'false');
+        modalVer.setAttribute('hidden', '');
+    }
+    var bdVer = modalVer.querySelector('.js-modal-ver-registro-backdrop');
+    if (bdVer) bdVer.addEventListener('click', closeModalVerRegistro);
+    modalVer.querySelectorAll('.js-modal-ver-registro-cerrar').forEach(function(b) {
+        b.addEventListener('click', closeModalVerRegistro);
+    });
+    modalVer.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeModalVerRegistro();
+    });
+    tabla.addEventListener('click', function(e) {
+        var tr = e.target.closest('tbody tr.modulo-row-clickable');
+        if (!tr || !tabla.contains(tr)) return;
+        if (e.target.closest('.td-actions, a, button, input, label')) return;
+        openModalVerRegistro(tr);
+    });
+    tabla.addEventListener('keydown', function(e) {
+        var tr = e.target.closest('tbody tr.modulo-row-clickable');
+        if (!tr || !tabla.contains(tr)) return;
+        if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('.td-actions')) {
+            e.preventDefault();
+            openModalVerRegistro(tr);
+        }
     });
 })();
 </script>
