@@ -15,22 +15,10 @@
 
 <div class="modulo-shell">
 <div class="modulo-top-distribution">
-<form method="get" action="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="modulo-search-wrap" id="modulo-search-form">
-  <label for="modulo-search" class="modulo-search-label">Buscar</label>
-  <input type="search" id="modulo-search" name="q" value="{{ search_q|default('', true)|e }}" placeholder="Buscar en este módulo…" class="modulo-search-input" aria-label="Buscar en el listado" autocomplete="off">
-  {% if filter_col and filter_val %}
-  <input type="hidden" name="fcol" value="{{ filter_col|e }}">
-  <input type="hidden" name="fval" value="{{ filter_val|e }}">
-  {% endif %}
-  {% if search_q %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-cancel modulo-search-clear">Limpiar</a>
-  {% endif %}
-</form>
-
 <div class="modulo-actions">
   <button type="button" class="btn btn-cancel js-toggle-filtro" aria-expanded="false" aria-controls="moduloFiltroPanel">Filtrar</button>
   {% if can_edit|default(true) and can_crear|default(true) %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, q=search_q or none, fcol=filter_col or none, fval=filter_val or none, crear=1) }}" class="btn btn-crear">Crear</a>
+  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, fcol=filter_col or none, fval=filter_val or none, crear=1) }}" class="btn btn-crear">Crear</a>
   {% endif %}
   {% if modulo_id == 'registro-asignaciones' and not item_edit and not request.args.get('crear') %}
   <div class="dropdown-pendientes-wrap">
@@ -71,9 +59,6 @@
 
 <div id="moduloFiltroPanel" class="modulo-filter-panel" hidden>
   <form method="get" action="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="modulo-filter-form">
-    {% if search_q %}
-    <input type="hidden" name="q" value="{{ search_q|e }}">
-    {% endif %}
     <div class="modulo-filter-grid">
       <div class="form-group">
         <label for="fcol">Columna</label>
@@ -90,7 +75,7 @@
       </div>
       <div class="form-group modulo-filter-actions">
         <button type="submit" class="btn btn-primary">Aplicar</button>
-        <a href="{{ url_for('main.modulo', modulo_id=modulo_id, q=search_q or none) }}" class="btn btn-cancel">Quitar filtros</a>
+        <a href="{{ url_for('main.modulo', modulo_id=modulo_id) }}" class="btn btn-cancel">Quitar filtros</a>
       </div>
     </div>
   </form>
@@ -159,7 +144,7 @@
       {% endfor %}
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">Guardar</button>
-        <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page, q=search_q or none) }}" class="btn btn-cancel">Cancelar</a>
+        <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page) }}" class="btn btn-cancel">Cancelar</a>
       </div>
     </form>
   </div>
@@ -202,7 +187,9 @@
             {% elif v == 'ASIGNADA' %}
               <span class="estado-badge estado-asignada">ASIGNADA</span>
             {% elif v == 'ASIGNADO' %}
-              <span class="estado-badge estado-asignada">{{ item[col.key] }}</span>
+              <span class="estado-badge estado-asignada">{{ v }}</span>
+            {% elif v == 'VISITA' %}
+              <span class="estado-badge estado-asignada">{{ v }}</span>
             {% elif v == 'DISPONIBLE' %}
               <span class="estado-badge estado-disponible">DISPONIBLE</span>
             {% elif v == 'NO EXISTE' %}
@@ -214,7 +201,7 @@
             {% elif v == 'PENDIENTE' %}
               <span class="estado-badge estado-pendiente">Pendiente</span>
             {% elif v %}
-              <span class="estado-badge estado-otro">{{ item[col.key] }}</span>
+              <span class="estado-badge estado-otro">{{ v }}</span>
             {% else %}
               —
             {% endif %}
@@ -229,7 +216,7 @@
         {% endfor %}
         {% if can_edit|default(true) %}
         <td class="td-actions" data-col-actions="1">
-        <a href="{{ url_for('main.modulo', modulo_id=modulo_id, edit_id=item.id, page=page, q=search_q or none, fcol=filter_col or none, fval=filter_val or none) }}" class="btn-editar" title="Editar">
+        <a href="{{ url_for('main.modulo', modulo_id=modulo_id, edit_id=item.id, page=page, fcol=filter_col or none, fval=filter_val or none) }}" class="btn-editar" title="Editar">
             <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
             Editar
           </a>
@@ -252,11 +239,11 @@
 {% if total_pages is defined and total_pages > 1 %}
 <nav class="modulo-pagination" aria-label="Paginación">
   {% if page > 1 %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page - 1, q=search_q or none, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-back">← Anterior</a>
+  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page - 1, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-back">← Anterior</a>
   {% endif %}
   <span class="modulo-pagination-pages">Página {{ page }} de {{ total_pages }}</span>
   {% if page < total_pages %}
-  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page + 1, q=search_q or none, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-back">Siguiente →</a>
+  <a href="{{ url_for('main.modulo', modulo_id=modulo_id, page=page + 1, fcol=filter_col or none, fval=filter_val or none) }}" class="btn btn-back">Siguiente →</a>
   {% endif %}
 </nav>
 {% endif %}
@@ -319,15 +306,6 @@
 
 <script>
 (function() {
-  var form = document.getElementById('modulo-search-form');
-  var input = document.getElementById('modulo-search');
-  if (form && input) {
-    var debounceMs = 350, debounceTimer = null;
-    input.addEventListener('input', function() {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(function() { debounceTimer = null; form.submit(); }, debounceMs);
-    });
-  }
   var btn = document.querySelector('.js-toggle-pendientes');
   var dropdown = document.getElementById('dropdownPendientes');
   if (btn && dropdown) {
@@ -548,7 +526,11 @@
       lab.textContent = label;
       var val = document.createElement("div");
       val.className = "modal-ver-registro-value";
-      val.textContent = (td.textContent || "").replace(/\s+/g, " ").trim() || "—";
+      var displayVal = (td.textContent || "").replace(/\s+/g, " ").trim() || "—";
+      if (key === "estado" && "{{ modulo_id }}" === "base-lockers") {
+        displayVal = displayVal.toUpperCase();
+      }
+      val.textContent = displayVal;
       row.appendChild(lab);
       row.appendChild(val);
       bodyEl.appendChild(row);

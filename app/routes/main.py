@@ -21,6 +21,73 @@ _DESPOSTE_CODES_UPPER = frozenset((a or "").upper() for a in DESPOSTE_AREAS)
 # Códigos de subárea en planta Desposte (DES, LYD, CAL, …) — sin la palabra DESPOSTE como “subárea”
 _DESPOSTE_SUBAREA_CODES = frozenset(x for x in _DESPOSTE_CODES_UPPER if x != "DESPOSTE")
 
+# Sesión EXTERNOS / EXTERNOS/OTRAS AREAS: listados de registros externos (no planta principal).
+_INTERNAS_PLANTA_UPPER = frozenset(
+    {
+        *_DESPOSTE_CODES_UPPER,
+        "ASUR",
+        "BENEFICIO",
+        "LN",
+        "CALIDAD",
+        "CAL",
+        "LOGISTICA",
+        "LOG",
+        "VIS",
+        "VISITAS",
+        "MTTO",
+        "PCC",
+        "PROCESO",
+    }
+)
+# Etiquetas que solo deben verse en esta sesión (no en ASUR/BENEFICIO/… ni en vista general dotaciones ≠ DESPOSTE).
+_OTRAS_ETIQUETAS_SOLO_SESION_EXTERNOS = frozenset(
+    (
+        "PIELES",
+        "SUBPRODUCTOS",
+        "PLANTA EMERGENCIA",
+    )
+)
+_DOTACION_AREA_USO_RESTO_INTERNA = frozenset(_INTERNAS_PLANTA_UPPER)
+
+# Nombre de área de trabajo en sesión y en UI (mantener también "EXTERNOS" por compatibilidad con filas viejas).
+_LABEL_AREA_EXTERNAS_OTRAS = "EXTERNOS/OTRAS AREAS"
+_EXTERNOS_SESSION_UPPER = frozenset(
+    {
+        "EXTERNOS",
+        (_LABEL_AREA_EXTERNAS_OTRAS or "").strip().upper(),
+    }
+)
+
+
+def _is_externos_area(area):
+    return (area or "").strip().upper() in _EXTERNOS_SESSION_UPPER
+
+
+def _area_uso_solo_en_sesion_externas(area_uso_val):
+    """Área de uso de dotación que no debe darse de alta ni verse en áreas principales (solo EXTERNOS/OTRAS AREAS)."""
+    u = (area_uso_val or "").strip().upper()
+    return u in _OTRAS_ETIQUETAS_SOLO_SESION_EXTERNOS or u in _EXTERNOS_SESSION_UPPER
+
+
+def _filtro_sin_etiquetas_solo_otras_areas(t_norm):
+    """Excluye PIELES, SUBPRODUCTOS, PLANTA EMERGENCIA (columna ya trim+upper en SQL)."""
+    return ~t_norm.in_(_OTRAS_ETIQUETAS_SOLO_SESION_EXTERNOS)
+
+
+def _base_dotaciones_scope_filter(current_area):
+    """Filtro sobre BaseDotaciones según sesión: DESPOSTE / EXTERNOS·otras / resto (sin DESPOSTE ni sólo‑otras)."""
+    from sqlalchemy import and_
+
+    au = db.func.upper(db.func.trim(db.func.coalesce(BaseDotaciones.area_uso, "")))
+    ca_u = (current_area or "").strip().upper()
+    if ca_u == "DESPOSTE":
+        return BaseDotaciones.area_uso == "DESPOSTE"
+    if _is_externos_area(current_area):
+        # Incluye PIELES, SUBPRODUCTOS, PLANTA EMERGENCIA; excluye solo áreas internas de planta.
+        return and_(au != "", ~au.in_(_DOTACION_AREA_USO_RESTO_INTERNA))
+    return and_(BaseDotaciones.area_uso != "DESPOSTE", _filtro_sin_etiquetas_solo_otras_areas(au))
+
+
 # Cierre por inactividad (segundos). Valor prudente: 25 min.
 IDLE_TIMEOUT_SECONDS = 25 * 60
 
@@ -70,6 +137,9 @@ def _lockers_por_sesion_filter(Model, current_area):
         return None
     a = getattr(Model, "area")
     sub = getattr(Model, "subarea", None)
+    if _is_externos_area(current_area):
+        tu = db.func.upper(db.func.trim(db.func.coalesce(a, "")))
+        return and_(tu != "", ~tu.in_(_INTERNAS_PLANTA_UPPER))
     if ca_u == "DESPOSTE":
         return db.func.upper(db.func.trim(a)) == "DESPOSTE"
     if sub is not None and ca_u in _DESPOSTE_SUBAREA_CODES:
@@ -98,12 +168,16 @@ def _registro_area_scope_filter(Model, current_area):
     if not ca:
         return None
     ac = getattr(Model, "area")
+    if _is_externos_area(current_area):
+        tu = db.func.upper(db.func.trim(db.func.coalesce(ac, "")))
+        return and_(tu != "", ~tu.in_(_INTERNAS_PLANTA_UPPER))
     if _is_desposte_context(current_area):
         flag = getattr(Model, "es_planta_desposte", None)
         zone = db.func.upper(db.func.trim(ac)).in_(DESPOSTE_AREAS)
+        tu = db.func.upper(db.func.trim(ac))
         if flag is not None:
-            return and_(flag.is_(True), zone)
-        return zone
+            return and_(flag.is_(True), zone, _filtro_sin_etiquetas_solo_otras_areas(tu))
+        return and_(zone, _filtro_sin_etiquetas_solo_otras_areas(tu))
 
     tu = db.func.upper(db.func.trim(ac))
     flag = getattr(Model, "es_planta_desposte", None)
@@ -115,11 +189,20 @@ def _registro_area_scope_filter(Model, current_area):
 
     # Área en sesión = nombre largo (area_trabajo); CSV histórico = código corto.
     if ca == "CALIDAD":
-        return or_(tu == "CALIDAD", and_(tu == "CAL", _no_es_planta_desposte()))
+        return and_(
+            or_(tu == "CALIDAD", and_(tu == "CAL", _no_es_planta_desposte())),
+            _filtro_sin_etiquetas_solo_otras_areas(tu),
+        )
     if ca == "LOGISTICA":
-        return or_(tu == "LOGISTICA", and_(tu == "LOG", _no_es_planta_desposte()))
+        return and_(
+            or_(tu == "LOGISTICA", and_(tu == "LOG", _no_es_planta_desposte())),
+            _filtro_sin_etiquetas_solo_otras_areas(tu),
+        )
     if ca == "BENEFICIO":
-        return or_(tu == "BENEFICIO", tu == "LN")
+        return and_(
+            or_(tu == "BENEFICIO", tu == "LN"),
+            _filtro_sin_etiquetas_solo_otras_areas(tu),
+        )
 
     cond = tu == ca
 
@@ -137,9 +220,9 @@ def _registro_area_scope_filter(Model, current_area):
                 )
             )
             cond = or_(cond, locker_sub)
-        return cond
+        return and_(cond, _filtro_sin_etiquetas_solo_otras_areas(tu))
 
-    return tu == ca
+    return and_(tu == ca, _filtro_sin_etiquetas_solo_otras_areas(tu))
 
 
 def _normalize_estado_base_lockers(estado):
@@ -258,10 +341,11 @@ def _codigo_dotacion_disponible(codigo, area=None):
         BaseDotaciones.codigo == (codigo or "").strip(),
         BaseDotaciones.estado.ilike("%disponible%"),
     ).filter(~BaseDotaciones.estado.ilike("%asignada%"))
-    if area == "DESPOSTE":
+    ca = (area or "").strip().upper()
+    if ca == "DESPOSTE":
         q = q.filter(BaseDotaciones.area_uso == "DESPOSTE")
     elif area:
-        q = q.filter(BaseDotaciones.area_uso != "DESPOSTE")
+        q = q.filter(_base_dotaciones_scope_filter(area))
     return q.first() is not None
 
 
@@ -286,10 +370,11 @@ def _marcar_dotacion_asignada(codigo, area=None):
         .filter(BaseDotaciones.estado.ilike("%disponible%"))
         .filter(~BaseDotaciones.estado.ilike("%asignada%"))
     )
-    if area == "DESPOSTE":
+    ca = (area or "").strip().upper()
+    if ca == "DESPOSTE":
         q = q.filter(BaseDotaciones.area_uso == "DESPOSTE")
     elif area:
-        q = q.filter(BaseDotaciones.area_uso != "DESPOSTE")
+        q = q.filter(_base_dotaciones_scope_filter(area))
     reg = q.first()
     if reg:
         reg.estado = "ASIGNADA"
@@ -322,10 +407,11 @@ def _liberar_dotacion(codigo, area=None):
     if not (codigo or "").strip():
         return
     q = BaseDotaciones.query.filter(BaseDotaciones.codigo == (codigo or "").strip()).filter(BaseDotaciones.estado.ilike("%asignada%"))
-    if area == "DESPOSTE":
+    ca = (area or "").strip().upper()
+    if ca == "DESPOSTE":
         q = q.filter(BaseDotaciones.area_uso == "DESPOSTE")
     elif area:
-        q = q.filter(BaseDotaciones.area_uso != "DESPOSTE")
+        q = q.filter(_base_dotaciones_scope_filter(area))
     reg = q.first()
     if reg:
         reg.estado = "DISPONIBLE"
@@ -1033,10 +1119,10 @@ def areas():
     return render_template("areas.html", areas_para_elegir=areas_para_elegir, sin_area=sin_area)
 
 
-@bp.route("/entrar-area/<nombre>")
+@bp.route("/entrar-area/<path:nombre>")
 @login_required
 def entrar_area(nombre):
-    """Fija el área actual y redirige al dashboard."""
+    """Fija el área actual y redirige al dashboard. <path:nombre> permite nombres con «/» (p. ej. EXTERNOS/OTRAS AREAS)."""
     nombre = (nombre or "").strip().upper()
     allowed = _allowed_areas_for_user()
     if nombre not in allowed:
@@ -1081,11 +1167,7 @@ def _dashboard_stats(current_area):
 
     # Lockers disponibles: por regla de negocio = BaseLockers estado DISPONIBLE (áreas generales; DESPOSTE por filtro de sesión).
     disponibles = q_base.filter(db.func.lower(BaseLockers.estado) == "disponible").count()
-    q_dot = BaseDotaciones.query
-    if current_area == "DESPOSTE":
-        q_dot = q_dot.filter(BaseDotaciones.area_uso == "DESPOSTE")
-    else:
-        q_dot = q_dot.filter(BaseDotaciones.area_uso != "DESPOSTE")
+    q_dot = BaseDotaciones.query.filter(_base_dotaciones_scope_filter(current_area))
     total_dotaciones = q_dot.count()
     # En stock: dotaciones DISPONIBLES que NO estén asignadas en RegistroAsignaciones (áreas generales; DESPOSTE se maneja aparte).
     q_dot_disp = q_dot.filter(db.func.lower(BaseDotaciones.estado) == "disponible")
@@ -1105,7 +1187,7 @@ def _dashboard_stats(current_area):
     # Personal presupuestado (por área; DESPOSTE excluido)
     personal_presupuestado = {"aprobados": 0, "contratados": 0, "por_contratar": 0}
     ca_u = (current_area or "").strip().upper()
-    if ca_u and ca_u != "DESPOSTE":
+    if ca_u and not _is_desposte_context(current_area) and not _is_externos_area(current_area):
         pp = (
             PersonalPresupuestado.query.filter(db.func.upper(db.func.trim(PersonalPresupuestado.area)) == ca_u)
             .first()
@@ -1190,6 +1272,7 @@ def _dashboard_stats(current_area):
         "total_asignaciones": total_asignaciones,
         "total_retiros": total_retiros,
         "personal_presupuestado": personal_presupuestado,
+        "show_personal_presupuestado": not _is_externos_area(current_area),
         "chart_labels": chart_labels,
         "chart_data": chart_data,
     }
@@ -1238,6 +1321,9 @@ def dashboard():
     unique_categories = sorted(set(MODULE_CATEGORIES.values()))
     # Listado del sidebar: sin Ingreso de Lockers ni Ingreso de Dotación (acceso por botones del encabezado)
     modulos_sidebar = {k: v for k, v in MODULOS_CONFIG.items() if k not in ("ingreso-lockers", "ingreso-dotacion")}
+    if _is_externos_area(current_area):
+        modulos_sidebar = {k: v for k, v in modulos_sidebar.items() if k != "personal-presupuestado"}
+    show_pp = not _is_externos_area(current_area)
     return render_template(
         "dashboard.html",
         total_lockers=total_lockers,
@@ -1254,6 +1340,7 @@ def dashboard():
         module_categories=MODULE_CATEGORIES,
         unique_categories=unique_categories,
         current_area=current_area,
+        show_personal_presupuestado=show_pp,
     )
 
 
@@ -1347,6 +1434,9 @@ def _registro_form_view(modulo_id):
         flash("Selecciona un área de trabajo.", "error")
         return redirect(url_for("main.areas"))
     can_edit = _user_can_edit()
+    ex_unlock = _is_externos_area(current_area)
+    def_area_personal = "" if ex_unlock else current_area
+    def_area_lockers = "" if ex_unlock else current_area
     if request.method == "POST" and can_edit:
         if modulo_id == "ingreso-dotacion":
             ne_err = _digits_only_field_error(_FORM_INGRESO_DOTACION, request.form)
@@ -1372,6 +1462,12 @@ def _registro_form_view(modulo_id):
             if area_uso not in INGRESO_DOTACION_AREA_OPCIONES:
                 flash("Seleccione un área válida.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
+            if _area_uso_solo_en_sesion_externas(area_uso) and not _is_externos_area(current_area):
+                flash(
+                    f"PIELES, SUBPRODUCTOS, PLANTA EMERGENCIA y el uso «{_LABEL_AREA_EXTERNAS_OTRAS}» solo se registran con el área de trabajo «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                    "error",
+                )
+                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
             if _codigo_base_dotaciones_duplicado(codigo):
                 flash("El código ya está registrado en Base de Dotaciones.", "error")
                 return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
@@ -1391,13 +1487,22 @@ def _registro_form_view(modulo_id):
                     titulo="Registro de Personal",
                     form_fields=_FORM_REGISTRO_PERSONAL,
                     can_edit=can_edit,
-                    default_area=current_area,
+                    default_area=def_area_personal,
+                    unlock_area_field=ex_unlock,
                 )
             nombre = (request.form.get("nombre") or "").strip()
             documento = (request.form.get("documento") or "").strip()
             if not nombre or not documento:
                 flash("Nombre y documento son obligatorios.", "error")
-                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Registro de Personal", form_fields=_FORM_REGISTRO_PERSONAL, can_edit=can_edit)
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Registro de Personal",
+                    form_fields=_FORM_REGISTRO_PERSONAL,
+                    can_edit=can_edit,
+                    default_area=def_area_personal,
+                    unlock_area_field=ex_unlock,
+                )
             talla_val = (request.form.get("talla") or "").strip()
             if not talla_val:
                 flash("Seleccione una talla.", "error")
@@ -1407,8 +1512,33 @@ def _registro_form_view(modulo_id):
                     titulo="Registro de Personal",
                     form_fields=_FORM_REGISTRO_PERSONAL,
                     can_edit=can_edit,
-                    default_area=current_area,
+                    default_area=def_area_personal,
+                    unlock_area_field=ex_unlock,
                 )
+            area_personal = (request.form.get("area") or "").strip()
+            if ex_unlock:
+                if not area_personal:
+                    flash("Indique el área del personal (operación externa).", "error")
+                    return render_template(
+                        "registro_form.html",
+                        modulo_id=modulo_id,
+                        titulo="Registro de Personal",
+                        form_fields=_FORM_REGISTRO_PERSONAL,
+                        can_edit=can_edit,
+                        default_area=def_area_personal,
+                        unlock_area_field=True,
+                    )
+                if area_personal.strip().upper() in _INTERNAS_PLANTA_UPPER:
+                    flash("Esa área corresponde a planta interna; use una etiqueta de operación externa.", "error")
+                    return render_template(
+                        "registro_form.html",
+                        modulo_id=modulo_id,
+                        titulo="Registro de Personal",
+                        form_fields=_FORM_REGISTRO_PERSONAL,
+                        can_edit=can_edit,
+                        default_area=area_personal,
+                        unlock_area_field=True,
+                    )
             obj = RegistroAsignaciones(
                 id_asignaciones=_get_next_id_asignaciones(),
                 operario=nombre,
@@ -1416,7 +1546,7 @@ def _registro_form_view(modulo_id):
                 email="",
                 telefono="",
                 cargo="",
-                area=current_area,
+                area=area_personal if ex_unlock else current_area,
                 talla_operarios=talla_val,
                 area_lockers=(request.form.get("area_lockers") or "").strip(),
                 estado="Activo",
@@ -1439,22 +1569,75 @@ def _registro_form_view(modulo_id):
                     titulo="Ingreso de Lockers",
                     form_fields=_FORM_INGRESO_LOCKERS,
                     can_edit=can_edit,
-                    default_area=current_area,
+                    default_area=def_area_lockers,
+                    unlock_area_field=ex_unlock,
                 )
             codigo = (request.form.get("codigo") or "").strip()
-            area = (request.form.get("area") or "").strip() or current_area
+            area = (request.form.get("area") or "").strip()
+            if ex_unlock:
+                if not area:
+                    flash("Indique el área del locker (operación externa).", "error")
+                    return render_template(
+                        "registro_form.html",
+                        modulo_id=modulo_id,
+                        titulo="Ingreso de Lockers",
+                        form_fields=_FORM_INGRESO_LOCKERS,
+                        can_edit=can_edit,
+                        default_area=def_area_lockers,
+                        unlock_area_field=True,
+                    )
+                if area.strip().upper() in _INTERNAS_PLANTA_UPPER:
+                    flash(
+                        f"No puede usar un código de área interna de planta en «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                        "error",
+                    )
+                    return render_template(
+                        "registro_form.html",
+                        modulo_id=modulo_id,
+                        titulo="Ingreso de Lockers",
+                        form_fields=_FORM_INGRESO_LOCKERS,
+                        can_edit=can_edit,
+                        default_area=area,
+                        unlock_area_field=True,
+                    )
+            else:
+                area = area or current_area
             area_lockers = (request.form.get("area_lockers") or "").strip()
             cantidad_raw = (request.form.get("cantidad") or "").strip() or "1"
             cantidad = max(1, int(cantidad_raw))
             if not codigo:
                 flash("El código es obligatorio.", "error")
-                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Ingreso de Lockers",
+                    form_fields=_FORM_INGRESO_LOCKERS,
+                    can_edit=can_edit,
+                    default_area=def_area_lockers,
+                    unlock_area_field=ex_unlock,
+                )
             if _codigo_base_lockers_duplicado(codigo):
                 flash("El código ya está registrado en Base de Lockers.", "error")
-                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Ingreso de Lockers",
+                    form_fields=_FORM_INGRESO_LOCKERS,
+                    can_edit=can_edit,
+                    default_area=def_area_lockers,
+                    unlock_area_field=ex_unlock,
+                )
             if cantidad > 1:
                 flash("Cada código debe ser único. Indique cantidad 1 o registre otro código en un envío aparte.", "error")
-                return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
+                return render_template(
+                    "registro_form.html",
+                    modulo_id=modulo_id,
+                    titulo="Ingreso de Lockers",
+                    form_fields=_FORM_INGRESO_LOCKERS,
+                    can_edit=can_edit,
+                    default_area=def_area_lockers,
+                    unlock_area_field=ex_unlock,
+                )
             estado = _normalize_estado_base_lockers("DISPONIBLE")
             for _ in range(cantidad):
                 obj = BaseLockers(codigo=codigo, area=area, subarea="", area_lockers=area_lockers, estado=estado)
@@ -1465,9 +1648,26 @@ def _registro_form_view(modulo_id):
     if modulo_id == "ingreso-dotacion":
         return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Dotación", form_fields=_FORM_INGRESO_DOTACION, can_edit=can_edit)
     if modulo_id == "registro-personal":
-        return render_template("registro_form.html", modulo_id=modulo_id, titulo="Registro de Personal", form_fields=_FORM_REGISTRO_PERSONAL, can_edit=can_edit, estado_activo=True, default_area=current_area)
+        return render_template(
+            "registro_form.html",
+            modulo_id=modulo_id,
+            titulo="Registro de Personal",
+            form_fields=_FORM_REGISTRO_PERSONAL,
+            can_edit=can_edit,
+            estado_activo=True,
+            default_area=def_area_personal,
+            unlock_area_field=ex_unlock,
+        )
     if modulo_id == "ingreso-lockers":
-        return render_template("registro_form.html", modulo_id=modulo_id, titulo="Ingreso de Lockers", form_fields=_FORM_INGRESO_LOCKERS, can_edit=can_edit, default_area=current_area)
+        return render_template(
+            "registro_form.html",
+            modulo_id=modulo_id,
+            titulo="Ingreso de Lockers",
+            form_fields=_FORM_INGRESO_LOCKERS,
+            can_edit=can_edit,
+            default_area=def_area_lockers,
+            unlock_area_field=ex_unlock,
+        )
     return None
 
 
@@ -1478,6 +1678,7 @@ INGRESO_DOTACION_AREA_OPCIONES = frozenset(
         "VISITAS",
         "MTTO",
         "PLANTA EMERGENCIA",
+        _LABEL_AREA_EXTERNAS_OTRAS,
         "EXTERNOS",
         "PIELES",
         "SUBPRODUCTOS",
@@ -1488,9 +1689,10 @@ _INGRESO_DOTACION_AREA_OPCIONES_ORDER = (
     "VISITAS",
     "MTTO",
     "PLANTA EMERGENCIA",
-    "EXTERNOS",
     "PIELES",
     "SUBPRODUCTOS",
+    _LABEL_AREA_EXTERNAS_OTRAS,
+    "EXTERNOS",
 )
 
 # Campos para los formularios de registro independientes (no almacenan en su tabla original)
@@ -1543,6 +1745,9 @@ def modulo(modulo_id):
     if modulo_id not in MODULOS_CONFIG:
         flash("Módulo no encontrado.", "error")
         return redirect(url_for("main.dashboard"))
+    if modulo_id == "personal-presupuestado" and _is_externos_area(session.get("current_area")):
+        flash(f"El módulo Personal presupuestado no está disponible en el área «{_LABEL_AREA_EXTERNAS_OTRAS}».", "error")
+        return redirect(url_for("main.dashboard"))
     # Redirigir solo ingreso-dotacion e ingreso-lockers al formulario; registro-personal es listado "Personal Registrado"
     if modulo_id in ("ingreso-dotacion", "ingreso-lockers"):
         return redirect(url_for("main.registro_form", modulo_id=modulo_id))
@@ -1557,6 +1762,14 @@ def modulo(modulo_id):
         for f in form_fields:
             if f.get("name") == "area":
                 f["options"] = opciones_area
+                break
+    if modulo_id == "registro-personal" and _is_externos_area(current_area):
+        form_fields = [dict(f) for f in form_fields]
+        for f in form_fields:
+            if f.get("name") == "area":
+                f["type"] = "text"
+                f["label"] = "Área (operación externa)"
+                f["required"] = True
                 break
     # Subárea: visible en DESPOSTE y en subáreas Desposte (LYD, CAL, …); oculta en BENEFICIO, PCC, etc.
     _ca_mod = (current_area or "").strip().upper()
@@ -1590,7 +1803,7 @@ def modulo(modulo_id):
         if eliminar_id:
             obj = Model.query.get(eliminar_id)
             if obj:
-                if user_rol == "coordinador" and area_key and user_area:  # superadmin/admin: sin restricción de área
+                if user_rol == "coordinador" and area_key and user_area and not _is_externos_area(current_area):
                     if getattr(obj, area_key, None) != user_area:
                         flash("No puede eliminar registros de otra área.", "error")
                         return redirect(url_for("main.modulo", modulo_id=modulo_id, page=next_page))
@@ -1625,7 +1838,7 @@ def modulo(modulo_id):
             if not obj:
                 flash("Registro no encontrado.", "error")
                 return redirect(url_for("main.modulo", modulo_id=modulo_id))
-            if user_rol == "coordinador" and area_key and user_area:
+            if user_rol == "coordinador" and area_key and user_area and not _is_externos_area(current_area):
                 if getattr(obj, area_key, None) != user_area:
                     flash("No puede editar registros de otra área.", "error")
                     return redirect(url_for("main.modulo", modulo_id=modulo_id))
@@ -1646,7 +1859,13 @@ def modulo(modulo_id):
                 else:
                     setattr(obj, name, (val or "").strip() if val is not None else "")
             # Personal Pendiente: área fija (toma área actual; no editable) — excluye DESPOSTE
-            if modulo_id == "registro-personal" and Model == RegistroAsignaciones and current_area and current_area.strip().upper() != "DESPOSTE":
+            if (
+                modulo_id == "registro-personal"
+                and Model == RegistroAsignaciones
+                and current_area
+                and current_area.strip().upper() != "DESPOSTE"
+                and not _is_externos_area(current_area)
+            ):
                 obj.area = current_area
             # Fechas obligatorias sin valor: usar hoy si aplica
             for df in date_fields:
@@ -1662,6 +1881,15 @@ def modulo(modulo_id):
                 obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
             if Model == BaseDotaciones and hasattr(obj, "estado"):
                 obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+            if Model == BaseDotaciones and not _is_externos_area(current_area):
+                au_ns = (getattr(obj, "area_uso", None) or "").strip()
+                if _area_uso_solo_en_sesion_externas(au_ns):
+                    flash(
+                        f"Este «área de uso» solo puede editarse en «{_LABEL_AREA_EXTERNAS_OTRAS}» (p. ej. PIELES o SUBPRODUCTOS).",
+                        "error",
+                    )
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
             if Model == HistorialRetiros and hasattr(obj, "observaciones"):
                 obj.observaciones = ((getattr(obj, "observaciones", None) or "").strip().upper())
             if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
@@ -1680,8 +1908,56 @@ def modulo(modulo_id):
                 flash("El código ya está registrado.", "error")
                 session["modulo_edit_form"] = {modulo_id: dict(request.form)}
                 return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+            if Model == RegistroAsignaciones and not _is_externos_area(current_area):
+                ara_u = (getattr(obj, "area", None) or "").strip().upper()
+                if ara_u in _OTRAS_ETIQUETAS_SOLO_SESION_EXTERNOS:
+                    flash(
+                        f"El área «{getattr(obj, 'area')}» solo se gestiona con «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                        "error",
+                    )
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+            if Model in (BaseLockers, LockerDisponibles) and _is_externos_area(current_area):
+                la = (getattr(obj, "area", None) or "").strip()
+                if not la:
+                    flash("Indique el área del locker (operación externa).", "error")
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+                if la.upper() in _INTERNAS_PLANTA_UPPER:
+                    flash(
+                        f"No puede usar un código de área interna de planta en «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                        "error",
+                    )
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+            if Model == BaseDotaciones and _is_externos_area(current_area):
+                au = (getattr(obj, "area_uso", None) or "").strip()
+                if not au:
+                    flash("Indique el área de uso de la dotación.", "error")
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+                if au.upper() in _DOTACION_AREA_USO_RESTO_INTERNA:
+                    flash(
+                        f"Esa área de uso corresponde a planta interna y no está permitida en «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                        "error",
+                    )
+                    session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                    return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
             # Validar Cod. Dotación y Cod. Lockers contra Dotaciones/Lockers Disponibles (Registro Asignaciones / Personal)
             if Model == RegistroAsignaciones:
+                if (
+                    modulo_id == "registro-personal"
+                    and _is_externos_area(current_area)
+                ):
+                    ra = (getattr(obj, "area", None) or "").strip()
+                    if not ra:
+                        flash("Indique el área del personal (operación externa).", "error")
+                        session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                        return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
+                    if ra.upper() in _INTERNAS_PLANTA_UPPER:
+                        flash("Esa área corresponde a planta interna; use una etiqueta externa.", "error")
+                        session["modulo_edit_form"] = {modulo_id: dict(request.form)}
+                        return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
                 if not (getattr(obj, "identificacion", None) or "").strip():
                     flash("La identificación del operario es obligatoria.", "error")
                     session["modulo_edit_form"] = {modulo_id: dict(request.form)}
@@ -1730,12 +2006,20 @@ def modulo(modulo_id):
                 setattr(obj, name, int(val) if val != "" and val is not None else None)
             else:
                 setattr(obj, name, (val or "").strip() if val is not None else "")
-        # Personal Pendiente: área fija (toma área actual; no editable) — excluye DESPOSTE
-        if modulo_id == "registro-personal" and Model == RegistroAsignaciones and current_area and current_area.strip().upper() != "DESPOSTE":
+        # Personal Pendiente: área fija (toma área actual; no editable) — excluye DESPOSTE y EXTERNOS
+        if (
+            modulo_id == "registro-personal"
+            and Model == RegistroAsignaciones
+            and current_area
+            and current_area.strip().upper() != "DESPOSTE"
+            and not _is_externos_area(current_area)
+        ):
             obj.area = current_area
         # Asignar área actual en módulos con area_key (Desposte: subáreas LYD/CAL/… → area=DESPOSTE + subarea)
         if area_key and current_area and hasattr(obj, area_key):
-            if Model in (BaseLockers, LockerDisponibles):
+            if _is_externos_area(current_area) and Model in (BaseLockers, LockerDisponibles, BaseDotaciones):
+                pass
+            elif Model in (BaseLockers, LockerDisponibles):
                 ca_u = (current_area or "").strip().upper()
                 if ca_u in _DESPOSTE_SUBAREA_CODES:
                     obj.area = "DESPOSTE"
@@ -1764,6 +2048,15 @@ def modulo(modulo_id):
             obj.estado = _normalize_estado_base_lockers(getattr(obj, "estado") or "")
         if Model == BaseDotaciones and hasattr(obj, "estado"):
             obj.estado = _normalize_estado_base_dotaciones(getattr(obj, "estado") or "")
+        if Model == BaseDotaciones and not _is_externos_area(current_area):
+            au_ns = (getattr(obj, "area_uso", None) or "").strip()
+            if _area_uso_solo_en_sesion_externas(au_ns):
+                flash(
+                    f"Este «área de uso» solo puede darse de alta en «{_LABEL_AREA_EXTERNAS_OTRAS}» (p. ej. PIELES o SUBPRODUCTOS).",
+                    "error",
+                )
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
         if Model == HistorialRetiros and hasattr(obj, "observaciones"):
             obj.observaciones = ((getattr(obj, "observaciones", None) or "").strip().upper())
         if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
@@ -1782,6 +2075,55 @@ def modulo(modulo_id):
             flash("El código ya está registrado.", "error")
             session["modulo_crear_form"] = {modulo_id: dict(request.form)}
             return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+        if Model == RegistroAsignaciones and not _is_externos_area(current_area):
+            ara_u = (getattr(obj, "area", None) or "").strip().upper()
+            if ara_u in _OTRAS_ETIQUETAS_SOLO_SESION_EXTERNOS:
+                flash(
+                    f"El área «{getattr(obj, 'area')}» solo se gestiona con «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                    "error",
+                )
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+        if Model in (BaseLockers, LockerDisponibles) and _is_externos_area(current_area):
+            la = (getattr(obj, "area", None) or "").strip()
+            if not la:
+                flash("Indique el área del locker (operación externa).", "error")
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+            if la.upper() in _INTERNAS_PLANTA_UPPER:
+                flash(
+                    f"No puede usar un código de área interna de planta en «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                    "error",
+                )
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+        if Model == BaseDotaciones and _is_externos_area(current_area):
+            au = (getattr(obj, "area_uso", None) or "").strip()
+            if not au:
+                flash("Indique el área de uso de la dotación.", "error")
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+            if au.upper() in _DOTACION_AREA_USO_RESTO_INTERNA:
+                flash(
+                    f"Esa área de uso corresponde a planta interna y no está permitida en «{_LABEL_AREA_EXTERNAS_OTRAS}».",
+                    "error",
+                )
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+        if (
+            Model == RegistroAsignaciones
+            and modulo_id == "registro-personal"
+            and _is_externos_area(current_area)
+        ):
+            ra = (getattr(obj, "area", None) or "").strip()
+            if not ra:
+                flash("Indique el área del personal (operación externa).", "error")
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
+            if ra.upper() in _INTERNAS_PLANTA_UPPER:
+                flash("Esa área corresponde a planta interna; use una etiqueta externa.", "error")
+                session["modulo_crear_form"] = {modulo_id: dict(request.form)}
+                return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
         # Validar Cod. Dotación y Cod. Lockers al crear RegistroAsignaciones
         if Model == RegistroAsignaciones:
             cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
@@ -1808,11 +2150,7 @@ def modulo(modulo_id):
     query = Model.query
     if area_key and current_area and hasattr(Model, area_key):
         if Model == BaseDotaciones and area_key == "area_uso":
-            # Base dotaciones: DESPOSTE solo ve sus datos; las demás áreas ven todo excepto DESPOSTE
-            if current_area.upper() == "DESPOSTE":
-                query = query.filter(BaseDotaciones.area_uso == "DESPOSTE")
-            else:
-                query = query.filter(BaseDotaciones.area_uso != "DESPOSTE")
+            query = query.filter(_base_dotaciones_scope_filter(current_area))
         elif Model == BaseLockers or Model == LockerDisponibles:
             lf = _lockers_por_sesion_filter(Model, current_area)
             if lf is not None:
@@ -1843,6 +2181,9 @@ def modulo(modulo_id):
                         db.func.upper(db.func.trim(SecaBotasDisponibles.area_locker)).like("%ADM%"),
                     )
                 )
+            elif _is_externos_area(current_area):
+                sa = db.func.upper(db.func.trim(db.func.coalesce(SecaBotasDisponibles.area, "")))
+                query = query.filter(and_(sa != "", ~sa.in_(_INTERNAS_PLANTA_UPPER)))
             else:
                 query = query.filter(db.func.upper(db.func.trim(SecaBotasDisponibles.area)) == ca_u)
         else:
@@ -1867,10 +2208,8 @@ def modulo(modulo_id):
         query = query.filter(~BaseDotaciones.estado.ilike("%asignada%"))
         # Alcance por área (DESPOSTE aparte; las demás áreas no ven DESPOSTE)
         if modulo_id == "dotaciones-disponibles":
-            if _is_desposte_context(current_area):
-                query = query.filter(BaseDotaciones.area_uso == "DESPOSTE")
-            else:
-                query = query.filter(BaseDotaciones.area_uso != "DESPOSTE")
+            query = query.filter(_base_dotaciones_scope_filter(current_area))
+            if not _is_desposte_context(current_area):
                 # Excluir códigos ya asignados en RegistroAsignaciones para el área (regla solicitada)
                 scope_ra = _registro_area_scope_filter(RegistroAsignaciones, current_area)
                 if scope_ra is not None:
@@ -2047,7 +2386,7 @@ def modulo(modulo_id):
     if edit_id:
         item_edit = Model.query.get(edit_id)
         if item_edit:
-            if user_rol == "coordinador" and area_key and user_area:
+            if user_rol == "coordinador" and area_key and user_area and not _is_externos_area(current_area):
                 if getattr(item_edit, area_key, None) != user_area:
                     item_edit = None
                     edit_data = {}
@@ -2105,10 +2444,8 @@ def modulo(modulo_id):
     opciones_seca_botas = []
     if "codigo_dotacion" in form_field_names:
         q_dot = BaseDotaciones.query
-        if current_area == "DESPOSTE":
-            q_dot = q_dot.filter(BaseDotaciones.area_uso == "DESPOSTE")
-        elif current_area:
-            q_dot = q_dot.filter(BaseDotaciones.area_uso != "DESPOSTE")
+        if current_area:
+            q_dot = q_dot.filter(_base_dotaciones_scope_filter(current_area))
         if modulo_id == "historial-retiros":
             opciones_dotacion = [r[0] for r in q_dot.with_entities(BaseDotaciones.codigo).distinct().order_by(BaseDotaciones.codigo).all() if r[0]]
         else:
@@ -2145,6 +2482,9 @@ def modulo(modulo_id):
                         db.func.upper(db.func.trim(SecaBotasDisponibles.area_locker)).like("%ADM%"),
                     )
                 )
+            elif _is_externos_area(current_area):
+                sa = db.func.upper(db.func.trim(db.func.coalesce(SecaBotasDisponibles.area, "")))
+                q_sb = q_sb.filter(and_(sa != "", ~sa.in_(_INTERNAS_PLANTA_UPPER)))
             else:
                 q_sb = q_sb.filter(db.func.upper(db.func.trim(SecaBotasDisponibles.area)) == ca_u)
         opciones_seca_botas = [
@@ -2155,6 +2495,9 @@ def modulo(modulo_id):
             .all()
             if r[0]
         ]
+    _mod_nav = dict(MODULOS_CONFIG)
+    if _is_externos_area(current_area):
+        _mod_nav.pop("personal-presupuestado", None)
     return render_template(
         "modulo.html",
         modulo_id=modulo_id,
@@ -2168,7 +2511,7 @@ def modulo(modulo_id):
         opciones_dotacion=opciones_dotacion,
         opciones_locker=opciones_locker,
         opciones_seca_botas=opciones_seca_botas,
-        modulos_config=MODULOS_CONFIG,
+        modulos_config=_mod_nav,
         can_edit=can_edit and not config.get("solo_lectura", False),
         can_crear=not config.get("no_crear", False),
         page=page,

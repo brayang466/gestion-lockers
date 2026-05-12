@@ -26,7 +26,10 @@
     <div class="layout">
         {% if session.get('user_id') %}
         <nav class="nav">
-            <a href="{{ url_for('main.dashboard') if session.get('current_area') else url_for('main.areas') }}" class="nav-title">LockerBeef</a>
+            <a href="{{ url_for('main.dashboard') if session.get('current_area') else url_for('main.areas') }}" class="nav-brand">
+                <span class="nav-title">LockerBeef</span>
+                <img src="{{ url_for('static', filename='dashboard/logo.png') }}" alt="Colbeef" class="nav-brand-logo" width="120" height="36" loading="lazy" decoding="async">
+            </a>
             {% if session.get('current_area') %}
             <span class="nav-area" aria-label="Área actual">{{ session.get('current_area') }}</span>
             {% if session.get('user_rol') in ('superadmin', 'admin', 'coordinador') %}

@@ -2,7 +2,7 @@
 {% from 'includes/module_icons.html' import module_icon %}
 {% block title %}Dashboard - LockerBeef{% endblock %}
 {% block content %}
-<div class="dashboard-layout ent" id="dashboardEnt">
+<div class="dashboard-layout ent" id="dashboardEnt" data-show-pp="{{ '1' if show_personal_presupuestado|default(true) else '0' }}">
     <aside class="dashboard-sidebar" aria-label="Navegación">
         <div class="sidebar-brand">LockerBeef</div>
         <nav class="sidebar-section">
@@ -101,6 +101,7 @@
             </section>
             <div id="reminderToast" class="reminder-toast" hidden role="status" aria-live="polite"></div>
 
+            {% if show_personal_presupuestado|default(true) %}
             <section class="widget-chart dashboard-chart-panel" aria-label="Personal presupuestado">
                 <div class="reminders-widget-header">
                     <h3>Personal presupuestado</h3>
@@ -110,6 +111,7 @@
                     <canvas id="ppChart" aria-label="Gráfica de personal presupuestado"></canvas>
                 </div>
             </section>
+            {% endif %}
         </div>
     </div>
 </div>
@@ -167,7 +169,9 @@
                 }
             });
         }
-        if (ppChart && stats.personal_presupuestado) {
+        var root = document.getElementById('dashboardEnt');
+        var showPp = root && root.getAttribute('data-show-pp') !== '0';
+        if (showPp && ppChart && stats.personal_presupuestado) {
             var pp = stats.personal_presupuestado || {};
             ppChart.data.datasets[0].data = [
                 pp.aprobados || 0,
