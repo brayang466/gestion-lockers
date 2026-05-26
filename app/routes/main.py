@@ -2,7 +2,7 @@ import os
 import re
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Blueprint, render_template, redirect, url_for, request, session, flash, current_app
+from flask import Blueprint, render_template, redirect, url_for, request, session, flash, current_app, send_from_directory
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from app import db
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -15,6 +15,16 @@ from app.models import (
 )
 
 bp = Blueprint("main", __name__)
+
+
+@bp.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(current_app.root_path, "static"),
+        "favicon.svg",
+        mimetype="image/svg+xml",
+    )
+
 
 DESPOSTE_AREAS = ("DESPOSTE", "DES", "CAL", "LYD", "SST", "MTTO", "LOG", "EXT", "TIC")
 _DESPOSTE_CODES_UPPER = frozenset((a or "").upper() for a in DESPOSTE_AREAS)
