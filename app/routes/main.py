@@ -12,6 +12,7 @@ from app.models import (
     RegistroPersonal, RegistroAsignaciones, DotacionesDisponibles,
     LockerDisponibles, HistorialRetiros, PersonalPresupuestado,
     IngresoLockers, IngresoDotacion, AreaTrabajo, SecaBotasDisponibles,
+    UsabilidadLog,
 )
 
 bp = Blueprint("main", __name__)
@@ -100,15 +101,115 @@ def _base_dotaciones_scope_filter(current_area):
 
 # Cierre por inactividad (segundos). Valor prudente: 25 min.
 IDLE_TIMEOUT_SECONDS = 25 * 60
+# Área DESPOSTE en mantenimiento: solo superadmin puede entrar.
+DESPOSTE_EN_MANTENIMIENTO = True
+USABILIDAD_DEBOUNCE_SECONDS = 4
+
+
+def _is_superadmin():
+    return (session.get("user_rol") or "").strip().lower() == "superadmin"
+
+
+def _desposte_bloqueado_para_usuario():
+    """True si DESPOSTE está en mantenimiento y el usuario no es superadmin."""
+    return DESPOSTE_EN_MANTENIMIENTO and not _is_superadmin()
+
+
+def _usabilidad_skip_path(path):
+    path_l = (path or "").lower()
+    if path_l.startswith("/static/") or path_l.startswith("/favicon"):
+        return True
+    if "/api/" in path_l or path_l.endswith("/api/stats"):
+        return True
+    if path_l in ("/login", "/acceso-integrado", "/favicon.ico"):
+        return True
+    return False
+
+
+def _usabilidad_accion_label(path, method="GET"):
+    """Etiqueta legible de la navegación para el módulo de usabilidad."""
+    path = (path or "").rstrip("/") or "/"
+    method = (method or "GET").upper()
+    if path == "/areas":
+        return "Selector de áreas"
+    if path.startswith("/entrar-area/"):
+        from urllib.parse import unquote
+        area = unquote(path[len("/entrar-area/"):]).upper()
+        return f"Entró al área {area}"
+    if path == "/dashboard":
+        return "Dashboard"
+    if path == "/dashboard/usuarios":
+        return "Gestión de usuarios"
+    if path == "/dashboard/usabilidad":
+        return "Usabilidad por usuario"
+    if path == "/logout":
+        return "Cierre de sesión"
+    if path.startswith("/dashboard/registro/"):
+        mid = path.rsplit("/", 1)[-1]
+        titulo = MODULOS_CONFIG.get(mid, {}).get("titulo", mid)
+        return f"Formulario: {titulo}"
+    if path.startswith("/dashboard/"):
+        parts = [p for p in path.split("/") if p]
+        if len(parts) >= 2:
+            mid = parts[1]
+            if mid in MODULOS_CONFIG:
+                titulo = MODULOS_CONFIG[mid].get("titulo", mid)
+                return f"{'Consultó' if method == 'GET' else 'Acción en'} {titulo}"
+    return f"{method} {path}"
+
+
+def _log_usabilidad_navegacion():
+    """Persiste un registro de navegación (no bloquea la app si falla)."""
+    try:
+        if session.get("user_id") is None:
+            return
+        path = request.path or ""
+        method = (request.method or "GET").upper()
+        if _usabilidad_skip_path(path):
+            return
+        now = int(datetime.utcnow().timestamp())
+        last_path = session.get("_usa_last_path")
+        last_ts = session.get("_usa_last_ts")
+        try:
+            last_ts_i = int(last_ts) if last_ts is not None else None
+        except Exception:
+            last_ts_i = None
+        if (
+            method == "GET"
+            and last_path == path
+            and last_ts_i is not None
+            and (now - last_ts_i) < USABILIDAD_DEBOUNCE_SECONDS
+        ):
+            return
+        session["_usa_last_path"] = path
+        session["_usa_last_ts"] = now
+        db.session.add(
+            UsabilidadLog(
+                user_id=session.get("user_id"),
+                user_nombre=(session.get("user_nombre") or "")[:120],
+                user_email=(session.get("user_email") or "")[:120],
+                user_rol=(session.get("user_rol") or "")[:30],
+                area=(session.get("current_area") or "")[:100],
+                path=path[:255],
+                metodo=method[:10],
+                accion=_usabilidad_accion_label(path, method)[:255],
+            )
+        )
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
 
 
 @bp.before_app_request
 def _idle_timeout_guard():
-    """Cierra sesión si no hay actividad en un tiempo prudente."""
+    """Cierra sesión si no hay actividad; registra usabilidad; bloquea DESPOSTE en mantenimiento."""
     path = (request.path or "").lower()
     if path.startswith("/static/"):
         return None
-    if path in ("/login", "/acceso-integrado", "/logout"):
+    if path in ("/login", "/acceso-integrado", "/logout", "/favicon.ico"):
         return None
     if session.get("user_id") is None:
         return None
@@ -122,6 +223,22 @@ def _idle_timeout_guard():
         session.clear()
         return redirect(url_for("main.login", reason="idle"))
     session["last_activity_ts"] = now
+
+    # Sesiones viejas en DESPOSTE mientras está en mantenimiento
+    if (
+        _desposte_bloqueado_para_usuario()
+        and (session.get("current_area") or "").strip().upper() == "DESPOSTE"
+        and not path.startswith("/areas")
+        and not path.startswith("/entrar-area")
+    ):
+        session.pop("current_area", None)
+        flash(
+            "El área DESPOSTE se encuentra en mantenimiento. Estará disponible luego.",
+            "error",
+        )
+        return redirect(url_for("main.areas"))
+
+    _log_usabilidad_navegacion()
     return None
 
 
@@ -808,6 +925,7 @@ def login():
             return render_template("login.html", email_value=email, recordarme_checked=recordarme, palabra_clave_hint=palabra_clave_hint)
         session["user_id"] = user.id
         session["user_nombre"] = user.nombre or user.email
+        session["user_email"] = (user.email or "").strip()
         session["user_rol"] = (user.rol or "usuario").strip().lower()
         session["user_area"] = (user.area or "").strip()
         session["session_started_ts_ms"] = int(datetime.utcnow().timestamp() * 1000)
@@ -904,6 +1022,7 @@ def acceso_integrado():
 
         session["user_id"] = user.id
         session["user_nombre"] = user.nombre or user.email
+        session["user_email"] = (user.email or "").strip()
         session["user_rol"] = (user.rol or "usuario").strip().lower()
         session["user_area"] = (user.area or "").strip()
         session["session_started_ts_ms"] = int(datetime.utcnow().timestamp() * 1000)
@@ -1126,7 +1245,12 @@ def areas():
         areas_para_elegir = []
     else:
         areas_para_elegir = [a for a in areas_list if a.nombre in allowed]
-    return render_template("areas.html", areas_para_elegir=areas_para_elegir, sin_area=sin_area)
+    return render_template(
+        "areas.html",
+        areas_para_elegir=areas_para_elegir,
+        sin_area=sin_area,
+        desposte_en_mantenimiento=_desposte_bloqueado_para_usuario(),
+    )
 
 
 @bp.route("/entrar-area/<path:nombre>")
@@ -1134,6 +1258,12 @@ def areas():
 def entrar_area(nombre):
     """Fija el área actual y redirige al dashboard. <path:nombre> permite nombres con «/» (p. ej. EXTERNOS/OTRAS AREAS)."""
     nombre = (nombre or "").strip().upper()
+    if nombre == "DESPOSTE" and _desposte_bloqueado_para_usuario():
+        flash(
+            "El área DESPOSTE se encuentra en mantenimiento. Estará disponible luego.",
+            "error",
+        )
+        return redirect(url_for("main.areas"))
     allowed = _allowed_areas_for_user()
     if nombre not in allowed:
         flash("No tienes acceso a esa área.", "error")
@@ -1345,6 +1475,7 @@ def dashboard():
         total_retiros=total_retiros,
         modulos_config=modulos_sidebar,
         show_usuarios_module=es_superadmin,
+        show_usabilidad_module=es_superadmin,
         chart_labels=chart_labels,
         chart_data=chart_data,
         module_categories=MODULE_CATEGORIES,
@@ -1360,13 +1491,13 @@ def _user_can_edit():
 
 
 def _superadmin_required(f):
-    """Decorator: solo superadmin (acceso a Gestión de usuarios)."""
+    """Decorator: solo superadmin (acceso a Gestión de usuarios / usabilidad)."""
     @wraps(f)
     def decorated(*args, **kwargs):
         if session.get("user_id") is None:
             return redirect(url_for("main.login"))
         if (session.get("user_rol") or "").strip().lower() != "superadmin":
-            flash("Solo el Super Administrador puede acceder a la gestión de usuarios.", "error")
+            flash("Solo el Super Administrador puede acceder a esta sección.", "error")
             return redirect(url_for("main.dashboard"))
         return f(*args, **kwargs)
     return decorated
@@ -1434,6 +1565,65 @@ def usuarios():
         areas=areas,
         item_edit=item_edit,
         roles_validos=ROLES_VALIDOS,
+    )
+
+
+@bp.route("/dashboard/usabilidad")
+@login_required
+@_superadmin_required
+def usabilidad():
+    """Historial de navegación por usuario. Solo superadmin."""
+    user_id = request.args.get("user_id", type=int)
+    q = (request.args.get("q") or "").strip()
+    fecha = (request.args.get("fecha") or "").strip()
+
+    query = UsabilidadLog.query
+    if user_id:
+        query = query.filter(UsabilidadLog.user_id == user_id)
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(
+                UsabilidadLog.user_nombre.ilike(like),
+                UsabilidadLog.user_email.ilike(like),
+                UsabilidadLog.accion.ilike(like),
+                UsabilidadLog.path.ilike(like),
+                UsabilidadLog.area.ilike(like),
+            )
+        )
+    if fecha:
+        try:
+            dia = datetime.strptime(fecha, "%Y-%m-%d").date()
+            inicio = datetime.combine(dia, datetime.min.time())
+            fin = inicio + timedelta(days=1)
+            query = query.filter(UsabilidadLog.creado_en >= inicio, UsabilidadLog.creado_en < fin)
+        except ValueError:
+            flash("Fecha inválida. Usa el formato AAAA-MM-DD.", "error")
+
+    logs = query.order_by(UsabilidadLog.creado_en.desc()).limit(500).all()
+    usuarios_filtro = Usuario.query.order_by(Usuario.nombre.asc()).all()
+
+    # Agrupar por fecha (día) para la vista
+    grupos = []
+    grupo_actual = None
+    for log in logs:
+        creado = log.creado_en or datetime.utcnow()
+        dia_key = creado.strftime("%Y-%m-%d")
+        dia_label = creado.strftime("%d/%m/%Y")
+        if grupo_actual is None or grupo_actual["key"] != dia_key:
+            grupo_actual = {"key": dia_key, "label": dia_label, "registros": []}
+            grupos.append(grupo_actual)
+        grupo_actual["registros"].append(log)
+
+    return render_template(
+        "usabilidad.html",
+        grupos=grupos,
+        logs=logs,
+        usuarios_filtro=usuarios_filtro,
+        filtro_user_id=user_id,
+        filtro_q=q,
+        filtro_fecha=fecha,
+        total=len(logs),
     )
 
 

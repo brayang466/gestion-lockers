@@ -11,9 +11,11 @@ from app.models.base_lockers import BaseLockers
 from app.models.base_dotaciones import BaseDotaciones
 from app.models.area_trabajo import AreaTrabajo
 from app.models.seca_botas_disponibles import SecaBotasDisponibles
+from app.models.usabilidad_log import UsabilidadLog
 
 __all__ = [
     "Usuario", "RegistroPersonal", "RegistroAsignaciones", "DotacionesDisponibles",
     "PersonalPresupuestado", "LockerDisponibles", "HistorialRetiros", "IngresoLockers",
     "IngresoDotacion", "BaseLockers", "BaseDotaciones", "AreaTrabajo", "SecaBotasDisponibles",
+    "UsabilidadLog",
 ]

@@ -48,6 +48,14 @@
                     </a>
                 </li>
                 {% endif %}
+                {% if show_usabilidad_module|default(false) %}
+                <li>
+                    <a href="{{ url_for('main.usabilidad') }}" class="modulo-link modulo-link-admin">
+                        {{ module_icon('activity') }}
+                        <span class="modulo-text"><span class="modulo-titulo">Usabilidad por usuario</span></span>
+                    </a>
+                </li>
+                {% endif %}
             </ul>
         </nav>
     </aside>

@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% from 'includes/module_icons.html' import module_icon %}
+{% block title %}Usabilidad por usuario - LockerBeef{% endblock %}
+{% block content %}
+<div class="usabilidad-page">
+    <header class="usabilidad-header">
+        <h1>Usabilidad por usuario</h1>
+        <p class="hint">Historial de navegación dentro del sistema: módulos visitados, área activa, hora y fecha. Solo visible para Super Administrador.</p>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="usuarios-resultado-wrap" role="status">
+        {% for category, msg in messages %}
+        <p class="usuarios-resultado usuarios-resultado-{{ category }}">{{ msg }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <form method="get" action="{{ url_for('main.usabilidad') }}" class="usabilidad-filtros" aria-label="Filtros">
+        <div class="usabilidad-filtro">
+            <label for="user_id">Usuario</label>
+            <select id="user_id" name="user_id" class="form-select">
+                <option value="">— Todos —</option>
+                {% for u in usuarios_filtro %}
+                <option value="{{ u.id }}" {% if filtro_user_id == u.id %}selected{% endif %}>{{ u.nombre or u.email }}{% if u.email %} ({{ u.email }}){% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="usabilidad-filtro">
+            <label for="fecha">Fecha</label>
+            <input type="date" id="fecha" name="fecha" class="form-input" value="{{ filtro_fecha or '' }}">
+        </div>
+        <div class="usabilidad-filtro usabilidad-filtro-q">
+            <label for="q">Buscar</label>
+            <input type="search" id="q" name="q" class="form-input" placeholder="Nombre, correo, acción, área…" value="{{ filtro_q or '' }}">
+        </div>
+        <div class="usabilidad-filtro-actions">
+            <button type="submit" class="btn-accion btn-guardar">Filtrar</button>
+            <a href="{{ url_for('main.usabilidad') }}" class="btn-accion btn-cancelar">Limpiar</a>
+        </div>
+    </form>
+
+    <div class="modulo-actions">
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-back">← Dashboard</a>
+        <span class="usabilidad-total">{{ total }} registro{{ '' if total == 1 else 's' }} (máx. 500)</span>
+    </div>
+
+    {% if not grupos %}
+    <div class="usabilidad-empty" role="status">
+        <p>No hay registros de navegación con los filtros actuales.</p>
+        <p class="hint">Los movimientos se guardan automáticamente cuando los usuarios navegan por el sistema.</p>
+    </div>
+    {% else %}
+    {% for grupo in grupos %}
+    <section class="usabilidad-dia" aria-label="Actividad del {{ grupo.label }}">
+        <h2 class="usabilidad-dia-titulo">{{ grupo.label }}</h2>
+        <div class="modulo-table-wrap usabilidad-table-wrap">
+            <table class="modulo-table usabilidad-table">
+                <thead>
+                    <tr>
+                        <th>Hora</th>
+                        <th>Usuario</th>
+                        <th>Rol</th>
+                        <th>Área</th>
+                        <th>Acción</th>
+                        <th>Ruta</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in grupo.registros %}
+                    <tr>
+                        <td data-label="Hora">{{ (log.creado_en.strftime('%H:%M:%S')) if log.creado_en else '—' }}</td>
+                        <td data-label="Usuario">
+                            <span class="usabilidad-user-name">{{ log.user_nombre or '—' }}</span>
+                            {% if log.user_email %}<span class="usabilidad-user-email">{{ log.user_email }}</span>{% endif %}
+                        </td>
+                        <td data-label="Rol">
+                            <span class="badge badge-{{ log.user_rol or 'usuario' }}">
+                                {% if (log.user_rol or '')|lower == 'superadmin' %}Super Administrador
+                                {% else %}{{ (log.user_rol or 'usuario')|capitalize }}{% endif %}
+                            </span>
+                        </td>
+                        <td data-label="Área">{{ log.area or '—' }}</td>
+                        <td data-label="Acción" class="usabilidad-accion">{{ log.accion or log.path }}</td>
+                        <td data-label="Ruta" class="usabilidad-path"><code>{{ log.metodo }} {{ log.path }}</code></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endfor %}
+    {% endif %}
+</div>
+{% endblock %}
