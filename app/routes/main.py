@@ -1,7 +1,8 @@
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
+from zoneinfo import ZoneInfo
 from flask import Blueprint, render_template, redirect, url_for, request, session, flash, current_app, send_from_directory
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from app import db
@@ -16,6 +17,10 @@ from app.models import (
 )
 
 bp = Blueprint("main", __name__)
+
+# Hora local del equipo / Colombia (UTC-5, sin DST)
+_TZ_COLOMBIA = ZoneInfo("America/Bogota")
+_TZ_UTC = timezone.utc
 
 
 @bp.route("/favicon.ico")
@@ -124,6 +129,21 @@ def _usabilidad_skip_path(path):
     if path_l in ("/login", "/acceso-integrado", "/favicon.ico"):
         return True
     return False
+
+
+def _now_colombia():
+    """Hora actual en zona America/Bogota (naive, para guardar/mostrar alineado al equipo)."""
+    return datetime.now(_TZ_COLOMBIA).replace(tzinfo=None)
+
+
+def _as_hora_colombia(dt):
+    """Convierte un datetime (UTC naive o aware) a hora local Colombia naive."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Los logs de usabilidad se guardan en UTC naive
+        dt = dt.replace(tzinfo=_TZ_UTC)
+    return dt.astimezone(_TZ_COLOMBIA).replace(tzinfo=None)
 
 
 def _usabilidad_accion_label(path, method="GET"):
@@ -1594,22 +1614,26 @@ def usabilidad():
     if fecha:
         try:
             dia = datetime.strptime(fecha, "%Y-%m-%d").date()
-            inicio = datetime.combine(dia, datetime.min.time())
-            fin = inicio + timedelta(days=1)
-            query = query.filter(UsabilidadLog.creado_en >= inicio, UsabilidadLog.creado_en < fin)
+            # El filtro de fecha es día local Colombia → convertir a rango UTC almacenado
+            inicio_local = datetime(dia.year, dia.month, dia.day, 0, 0, 0, tzinfo=_TZ_COLOMBIA)
+            fin_local = inicio_local + timedelta(days=1)
+            inicio_utc = inicio_local.astimezone(_TZ_UTC).replace(tzinfo=None)
+            fin_utc = fin_local.astimezone(_TZ_UTC).replace(tzinfo=None)
+            query = query.filter(UsabilidadLog.creado_en >= inicio_utc, UsabilidadLog.creado_en < fin_utc)
         except ValueError:
             flash("Fecha inválida. Usa el formato AAAA-MM-DD.", "error")
 
     logs = query.order_by(UsabilidadLog.creado_en.desc()).limit(500).all()
     usuarios_filtro = Usuario.query.order_by(Usuario.nombre.asc()).all()
 
-    # Agrupar por fecha (día) para la vista
+    # Agrupar por fecha local (Colombia) y exponer hora sincronizada con el equipo
     grupos = []
     grupo_actual = None
     for log in logs:
-        creado = log.creado_en or datetime.utcnow()
-        dia_key = creado.strftime("%Y-%m-%d")
-        dia_label = creado.strftime("%d/%m/%Y")
+        creado_local = _as_hora_colombia(log.creado_en) or _now_colombia()
+        log.hora_local = creado_local.strftime("%H:%M:%S")
+        dia_key = creado_local.strftime("%Y-%m-%d")
+        dia_label = creado_local.strftime("%d/%m/%Y")
         if grupo_actual is None or grupo_actual["key"] != dia_key:
             grupo_actual = {"key": dia_key, "label": dia_label, "registros": []}
             grupos.append(grupo_actual)

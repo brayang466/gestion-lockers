@@ -71,7 +71,7 @@
                 <tbody>
                     {% for log in grupo.registros %}
                     <tr>
-                        <td data-label="Hora">{{ (log.creado_en.strftime('%H:%M:%S')) if log.creado_en else '—' }}</td>
+                        <td data-label="Hora">{{ log.hora_local if log.hora_local is defined else (log.creado_en.strftime('%H:%M:%S') if log.creado_en else '—') }}</td>
                         <td data-label="Usuario">
                             <span class="usabilidad-user-name">{{ log.user_nombre or '—' }}</span>
                             {% if log.user_email %}<span class="usabilidad-user-email">{{ log.user_email }}</span>{% endif %}
