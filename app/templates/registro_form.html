@@ -7,9 +7,20 @@
   <p class="hint">Registre la dotación. Los datos se guardarán en <strong>Base de Dotaciones</strong>.</p>
   {% elif modulo_id == 'registro-personal' %}
   <p class="hint">Datos del trabajador. El registro se guardará en <strong>Registro de Asignaciones</strong> con estado <span class="badge-activo">Activo</span> (sin asignación de locker ni dotación hasta que se complete).</p>
+  {% if gh_autofill|default(false) %}
+  <p class="hint hint-gh">
+    {% if gh_area %}
+    Autollenado desde <strong>Gestión Humana</strong> → área <strong>{{ gh_area }}</strong> (empleados activos, más recientes primero). Escriba la cédula o el nombre.
+    {% else %}
+    Esta área aún no tiene mapeo a Gestión Humana; puede digitar los datos manualmente.
+    {% endif %}
+  </p>
+  {% endif %}
   {% elif modulo_id == 'ingreso-lockers' %}
   <p class="hint">Registre el o los lockers. Los datos se guardarán en <strong>Base de Lockers</strong>.</p>
   {% endif %}
+
+  <div id="formToast" class="form-toast" hidden role="status" aria-live="polite"></div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
   {% if messages %}
@@ -27,9 +38,14 @@
 
   {% if can_edit|default(true) %}
   <div class="modulo-form-wrap">
-    <form method="post" action="{{ url_for('main.registro_form', modulo_id=modulo_id) }}" class="modulo-form" id="registro-form">
+    <form method="post" action="{{ url_for('main.registro_form', modulo_id=modulo_id) }}" class="modulo-form" id="registro-form" autocomplete="off" novalidate>
+      {% if modulo_id == 'registro-personal' and gh_autofill|default(false) %}
+      <input type="hidden" name="email" id="f_email" value="">
+      <input type="hidden" name="telefono" id="f_telefono" value="">
+      <input type="hidden" name="cargo" id="f_cargo" value="">
+      {% endif %}
       {% for f in form_fields %}
-      <div class="form-group">
+      <div class="form-group{% if modulo_id == 'registro-personal' and f.name == 'documento' and gh_autofill|default(false) %} form-group-gh{% endif %}" data-field="{{ f.name }}">
         <label for="f_{{ f.name }}">{{ f.label }}{% if f.get('required') %} *{% endif %}</label>
         {% if f.type == 'textarea' %}
         <textarea id="f_{{ f.name }}" name="{{ f.name }}" rows="3" class="form-input" {% if f.get('required') %}required{% endif %}></textarea>
@@ -41,6 +57,7 @@
         </select>
         {% else %}
         {% set lock_area_readonly = (modulo_id == 'registro-personal' or modulo_id == 'ingreso-lockers') and f.name == 'area' and not (unlock_area_field|default(false)) %}
+        <div class="{% if modulo_id == 'registro-personal' and f.name == 'documento' and gh_autofill|default(false) %}gh-doc-wrap{% endif %}">
         <input type="{{ f.type }}" id="f_{{ f.name }}" name="{{ f.name }}"
                {% if f.type == 'number' %}value="1" min="1" step="1"{% elif f.name == 'area' and default_area is defined %}value="{{ default_area or '' }}"{% elif f.get('default') is defined %}value="{{ f.default }}"{% endif %}
                {% if f.get('readonly') %}readonly{% endif %}
@@ -48,11 +65,16 @@
                {% if f.get('required') %}required{% endif %}
                {% if f.get('numeric_only') and not f.get('readonly') %}data-numeric-only="1" inputmode="numeric" autocomplete="off"{% endif %}
                class="form-input{% if f.get('readonly') %} input-readonly{% endif %}{% if lock_area_readonly %} input-readonly{% endif %}">
+        {% if modulo_id == 'registro-personal' and f.name == 'documento' and gh_autofill|default(false) and gh_area %}
+        <div id="ghSuggest" class="gh-suggest" hidden role="listbox" aria-label="Empleados Gestión Humana"></div>
         {% endif %}
+        </div>
+        {% endif %}
+        <p class="field-msg" data-for="{{ f.name }}" hidden></p>
       </div>
       {% endfor %}
       <div class="form-actions">
-        <button type="submit" class="btn btn-primary">Registrar</button>
+        <button type="submit" class="btn btn-primary" id="btnRegistrar">Registrar</button>
         <a href="{{ url_for('main.dashboard') }}" class="btn btn-cancel">Cancelar</a>
       </div>
     </form>
@@ -61,4 +83,276 @@
   <p class="hint">No tiene permiso para registrar.</p>
   {% endif %}
 </div>
+
+<style>
+  .hint-gh { opacity: .9; }
+  .form-toast {
+    position: sticky; top: .75rem; z-index: 50; margin: 0 0 1rem;
+    padding: .85rem 1rem; border-radius: 12px; font-weight: 600;
+    border: 1px solid transparent; box-shadow: 0 10px 28px rgba(0,0,0,.28);
+    animation: toastIn .28s ease;
+  }
+  .form-toast.is-error {
+    background: rgba(239,68,68,.14); border-color: rgba(239,68,68,.45); color: #fecaca;
+  }
+  .form-toast.is-ok {
+    background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.4); color: #bbf7d0;
+  }
+  .form-toast.is-warn {
+    background: rgba(245,158,11,.14); border-color: rgba(245,158,11,.45); color: #fde68a;
+  }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-8px);} to { opacity: 1; transform: none;} }
+  @keyframes fieldShake {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+  .form-group.is-invalid .form-input {
+    border-color: #f87171 !important;
+    box-shadow: 0 0 0 3px rgba(248,113,113,.22);
+    animation: fieldShake .35s ease;
+  }
+  .form-group.is-valid .form-input {
+    border-color: #4ade80 !important;
+    box-shadow: 0 0 0 3px rgba(74,222,128,.18);
+  }
+  .field-msg {
+    margin: .35rem 0 0; font-size: .82rem; font-weight: 600;
+  }
+  .form-group.is-invalid .field-msg { color: #fca5a5; }
+  .form-group.is-valid .field-msg { color: #86efac; }
+  .gh-doc-wrap { position: relative; }
+  .gh-suggest {
+    position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px);
+    max-height: 280px; overflow: auto;
+    background: var(--surface, #0f172a); border: 1px solid rgba(148,163,184,.35);
+    border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,.35);
+  }
+  .gh-suggest-item {
+    display: block; width: 100%; text-align: left; padding: .65rem .85rem;
+    border: 0; background: transparent; color: inherit; cursor: pointer;
+    border-bottom: 1px solid rgba(148,163,184,.15);
+  }
+  .gh-suggest-item:hover, .gh-suggest-item:focus { background: rgba(56,189,248,.12); outline: none; }
+  .gh-suggest-meta { display: block; font-size: .8rem; opacity: .7; margin-top: .15rem; }
+  .gh-suggest-empty, .gh-suggest-status { padding: .75rem .85rem; opacity: .75; font-size: .9rem; }
+</style>
+
+{% if modulo_id == 'registro-personal' %}
+<script>
+(function () {
+  var form = document.getElementById('registro-form');
+  var toast = document.getElementById('formToast');
+  var apiDup = {{ (api_verificar_documento or '')|tojson }};
+  var apiUrl = {{ (api_empleados_gh or '')|tojson }};
+  var doc = document.getElementById('f_documento');
+  var nom = document.getElementById('f_nombre');
+  var talla = document.getElementById('f_talla');
+  var box = document.getElementById('ghSuggest');
+  var email = document.getElementById('f_email');
+  var tel = document.getElementById('f_telefono');
+  var cargo = document.getElementById('f_cargo');
+  if (!form) return;
+
+  var dupBusy = false;
+  var isDuplicate = false;
+
+  function showToast(msg, kind) {
+    if (!toast) return;
+    toast.hidden = false;
+    toast.className = 'form-toast is-' + (kind || 'error');
+    toast.textContent = msg;
+  }
+  function hideToast() {
+    if (!toast) return;
+    toast.hidden = true;
+  }
+  function setFieldState(name, state, message) {
+    var group = form.querySelector('[data-field="' + name + '"]');
+    if (!group) return;
+    group.classList.remove('is-invalid', 'is-valid');
+    if (state) group.classList.add('is-' + state);
+    var msg = group.querySelector('.field-msg[data-for="' + name + '"]');
+    if (msg) {
+      if (message) {
+        msg.hidden = false;
+        msg.textContent = message;
+      } else {
+        msg.hidden = true;
+        msg.textContent = '';
+      }
+    }
+  }
+  function clearStates() {
+    Array.prototype.forEach.call(form.querySelectorAll('.form-group'), function (g) {
+      g.classList.remove('is-invalid', 'is-valid');
+      var m = g.querySelector('.field-msg');
+      if (m) { m.hidden = true; m.textContent = ''; }
+    });
+  }
+
+  function fill(item) {
+    if (!item) return;
+    if (doc) doc.value = item.documento || '';
+    if (nom) nom.value = item.nombre || '';
+    if (email) email.value = item.email || '';
+    if (tel) tel.value = item.telefono || '';
+    if (cargo) cargo.value = item.cargo || '';
+    setFieldState('documento', 'valid', 'Seleccionado desde Gestión Humana');
+    setFieldState('nombre', 'valid', 'Autocompletado');
+    hideSuggest();
+    checkDuplicate();
+  }
+
+  function hideSuggest() {
+    if (!box) return;
+    box.hidden = true;
+    box.innerHTML = '';
+  }
+  function showStatus(text, isError) {
+    if (!box) return;
+    box.hidden = false;
+    box.innerHTML = '<div class="gh-suggest-status"' + (isError ? ' style="color:#f87171"' : '') + '>' + text + '</div>';
+  }
+  function render(items) {
+    if (!box) return;
+    if (!items || !items.length) {
+      showStatus('Sin resultados en Gestión Humana para esta área.');
+      return;
+    }
+    box.hidden = false;
+    box.innerHTML = items.map(function (it, idx) {
+      var meta = (it.fecha_ingreso ? ('Ingreso: ' + it.fecha_ingreso) : '') + (it.estado ? (' · ' + it.estado) : '');
+      return '<button type="button" class="gh-suggest-item" role="option" data-idx="' + idx + '">' +
+        '<strong>' + (it.documento || '') + '</strong> — ' + (it.nombre || '') +
+        (meta ? '<span class="gh-suggest-meta">' + meta + '</span>' : '') +
+        '</button>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('.gh-suggest-item'), function (btn) {
+      btn.addEventListener('click', function () {
+        fill(items[parseInt(btn.getAttribute('data-idx'), 10)]);
+      });
+    });
+  }
+
+  var timer = null;
+  var lastQ = null;
+  function search(q, force) {
+    if (!apiUrl || !box) return;
+    var query = (q || '').trim();
+    if (!force && query === lastQ) return;
+    lastQ = query;
+    showStatus('Buscando…');
+    var url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(query) + '&limit=20';
+    fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data || data.ok === false) {
+          showStatus((data && data.error) || 'No se pudo consultar Gestión Humana.', true);
+          return;
+        }
+        render(data.items || []);
+      })
+      .catch(function () { showStatus('Error de red al consultar Gestión Humana.', true); });
+  }
+
+  function checkDuplicate() {
+    if (!apiDup || !doc) return Promise.resolve(false);
+    var d = (doc.value || '').replace(/\D+/g, '');
+    if (d.length < 5) {
+      isDuplicate = false;
+      return Promise.resolve(false);
+    }
+    dupBusy = true;
+    var url = apiDup + (apiDup.indexOf('?') >= 0 ? '&' : '?') + 'documento=' + encodeURIComponent(d);
+    return fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        dupBusy = false;
+        isDuplicate = !!(data && data.exists);
+        if (isDuplicate) {
+          setFieldState('documento', 'invalid', data.message || 'Este documento ya está registrado.');
+          showToast(data.message || 'Documento duplicado. No se puede registrar de nuevo.', 'error');
+        } else if (d) {
+          setFieldState('documento', 'valid', 'Documento disponible');
+          hideToast();
+        }
+        return isDuplicate;
+      })
+      .catch(function () { dupBusy = false; return false; });
+  }
+
+  if (doc && box && apiUrl) {
+    doc.addEventListener('focus', function () {
+      if (!box.hidden && box.innerHTML) return;
+      search(doc.value || '', true);
+    });
+    doc.addEventListener('input', function () {
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        search(doc.value || '', true);
+        checkDuplicate();
+      }, 280);
+    });
+    doc.addEventListener('keydown', function (e) { if (e.key === 'Escape') hideSuggest(); });
+    document.addEventListener('click', function (e) {
+      if (!box.contains(e.target) && e.target !== doc) hideSuggest();
+    });
+  } else if (doc) {
+    doc.addEventListener('blur', checkDuplicate);
+  }
+
+  form.addEventListener('submit', function (e) {
+    clearStates();
+    hideToast();
+    var errors = [];
+    var d = (doc && doc.value || '').trim();
+    var n = (nom && nom.value || '').trim();
+    var t = (talla && talla.value || '').trim();
+
+    if (!d) {
+      setFieldState('documento', 'invalid', 'Ingrese el documento (solo números).');
+      errors.push('documento');
+    } else if (!/^\d+$/.test(d.replace(/\s+/g, ''))) {
+      setFieldState('documento', 'invalid', 'El documento debe contener solo dígitos.');
+      errors.push('documento');
+    }
+    if (!n) {
+      setFieldState('nombre', 'invalid', 'El nombre es obligatorio.');
+      errors.push('nombre');
+    }
+    if (!t) {
+      setFieldState('talla', 'invalid', 'Seleccione una talla.');
+      errors.push('talla');
+    }
+    if (isDuplicate) {
+      setFieldState('documento', 'invalid', 'Este documento ya está registrado.');
+      errors.push('documento');
+    }
+
+    if (errors.length) {
+      e.preventDefault();
+      showToast('Revisa los campos marcados en rojo.', 'error');
+      var first = form.querySelector('.form-group.is-invalid .form-input');
+      if (first) first.focus();
+      return;
+    }
+
+    // Revalidar duplicado al enviar
+    if (apiDup && doc) {
+      e.preventDefault();
+      checkDuplicate().then(function (dup) {
+        if (dup) {
+          showToast('No se puede registrar: el documento ya existe.', 'error');
+          return;
+        }
+        form.submit();
+      });
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

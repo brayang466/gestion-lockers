@@ -1317,6 +1317,141 @@ def api_verificar_codigos():
     return jsonify(out)
 
 
+@bp.route("/dashboard/api/empleados-gh")
+@login_required
+@_require_current_area
+def api_empleados_gh():
+    """Autollenado: empleados de gestio_humana filtrados por área (mapeada), más recientes primero."""
+    from flask import jsonify
+    from app.utils.gestion_humana import area_gh_para_lockers, buscar_empleados
+
+    current_area = (session.get("current_area") or "").strip()
+    q = (request.args.get("q") or "").strip()
+    try:
+        limit = int(request.args.get("limit") or 25)
+    except (TypeError, ValueError):
+        limit = 25
+    items, err = buscar_empleados(current_area, q=q, limit=limit, solo_activos=True)
+    return jsonify(
+        {
+            "ok": err is None,
+            "error": err,
+            "area_lockers": current_area,
+            "area_gh": area_gh_para_lockers(current_area),
+            "items": items,
+        }
+    )
+
+
+@bp.route("/dashboard/api/empleados-gh/<documento>")
+@login_required
+@_require_current_area
+def api_empleado_gh_detalle(documento):
+    """Detalle de un empleado de Gestión Humana por cédula (dentro del área actual mapeada)."""
+    from flask import jsonify
+    from app.utils.gestion_humana import obtener_empleado_por_cedula
+
+    current_area = (session.get("current_area") or "").strip()
+    item, err = obtener_empleado_por_cedula(documento, current_area=current_area)
+    return jsonify({"ok": item is not None, "error": err, "item": item})
+
+
+@bp.route("/dashboard/api/retirados-gh")
+@login_required
+@_require_current_area
+def api_retirados_gh():
+    """Retirados de gestio_humana por área mapeada, más recientes primero."""
+    from flask import jsonify
+    from app.utils.gestion_humana import area_gh_para_lockers, buscar_retirados
+
+    current_area = (session.get("current_area") or "").strip()
+    q = (request.args.get("q") or "").strip()
+    try:
+        limit = int(request.args.get("limit") or 25)
+    except (TypeError, ValueError):
+        limit = 25
+    items, err = buscar_retirados(current_area, q=q, limit=limit)
+    return jsonify(
+        {
+            "ok": err is None,
+            "error": err,
+            "area_lockers": current_area,
+            "area_gh": area_gh_para_lockers(current_area),
+            "items": items,
+        }
+    )
+
+
+@bp.route("/dashboard/api/sync-retirados-gh", methods=["POST", "GET"])
+@login_required
+@_require_current_area
+def api_sync_retirados_gh():
+    """Sincroniza retirados de GH → historial_retiros (solo inserta nuevos; no sobrescribe)."""
+    from flask import jsonify
+    from app.utils.gestion_humana import sincronizar_retirados_area
+
+    if not _user_can_edit():
+        return jsonify({"ok": False, "error": "Sin permiso para sincronizar.", "inserted": 0}), 403
+    current_area = (session.get("current_area") or "").strip()
+    result = sincronizar_retirados_area(current_area)
+    status = 200 if result.get("ok") else 400
+    return jsonify(result), status
+
+
+@bp.route("/dashboard/api/verificar-documento-personal")
+@login_required
+@_require_current_area
+def api_verificar_documento_personal():
+    """Indica si el documento ya está en Registro de personal / asignaciones."""
+    from flask import jsonify
+    from sqlalchemy import or_
+    import re as _re
+
+    documento = _re.sub(r"\D+", "", (request.args.get("documento") or "").strip())
+    if not documento:
+        return jsonify({"ok": True, "exists": False, "documento": ""})
+
+    exists = False
+    operario = None
+    area_reg = None
+    candidates = (
+        RegistroAsignaciones.query.filter(
+            or_(
+                RegistroAsignaciones.identificacion == documento,
+                RegistroAsignaciones.identificacion.like(f"%{documento}%"),
+            )
+        )
+        .with_entities(
+            RegistroAsignaciones.identificacion,
+            RegistroAsignaciones.operario,
+            RegistroAsignaciones.area,
+        )
+        .limit(50)
+        .all()
+    )
+    for row in candidates:
+        if _re.sub(r"\D+", "", (row[0] or "").strip()) == documento:
+            exists = True
+            operario = row[1]
+            area_reg = row[2]
+            break
+    return jsonify(
+        {
+            "ok": True,
+            "exists": exists,
+            "documento": documento,
+            "operario": operario,
+            "area": area_reg,
+            "message": (
+                f"Ya está registrado: {operario or documento}"
+                + (f" (área {area_reg})" if area_reg else "")
+                if exists
+                else None
+            ),
+        }
+    )
+
+
 def _dashboard_stats(current_area):
     """Calcula estadísticas del dashboard para un área. Usado por dashboard() y por api_dashboard_stats()."""
     from sqlalchemy import func, or_, and_, false
@@ -1661,6 +1796,24 @@ def _registro_form_view(modulo_id):
     ex_unlock = _is_externos_area(current_area)
     def_area_personal = "" if ex_unlock else current_area
     def_area_lockers = "" if ex_unlock else current_area
+
+    def _ctx_registro_personal(**extra):
+        from app.utils.gestion_humana import area_gh_para_lockers
+
+        base = dict(
+            modulo_id=modulo_id,
+            titulo="Registro de Personal",
+            form_fields=_FORM_REGISTRO_PERSONAL,
+            can_edit=can_edit,
+            default_area=def_area_personal,
+            unlock_area_field=ex_unlock,
+            gh_autofill=True,
+            gh_area=area_gh_para_lockers(current_area),
+            api_empleados_gh=url_for("main.api_empleados_gh"),
+            api_verificar_documento=url_for("main.api_verificar_documento_personal"),
+        )
+        base.update(extra)
+        return base
     if request.method == "POST" and can_edit:
         if modulo_id == "ingreso-dotacion":
             ne_err = _digits_only_field_error(_FORM_INGRESO_DOTACION, request.form)
@@ -1705,71 +1858,73 @@ def _registro_form_view(modulo_id):
             ne_err = _digits_only_field_error(_FORM_REGISTRO_PERSONAL, request.form)
             if ne_err:
                 flash(ne_err, "error")
-                return render_template(
-                    "registro_form.html",
-                    modulo_id=modulo_id,
-                    titulo="Registro de Personal",
-                    form_fields=_FORM_REGISTRO_PERSONAL,
-                    can_edit=can_edit,
-                    default_area=def_area_personal,
-                    unlock_area_field=ex_unlock,
-                )
+                return render_template("registro_form.html", **_ctx_registro_personal())
             nombre = (request.form.get("nombre") or "").strip()
             documento = (request.form.get("documento") or "").strip()
             if not nombre or not documento:
                 flash("Nombre y documento son obligatorios.", "error")
-                return render_template(
-                    "registro_form.html",
-                    modulo_id=modulo_id,
-                    titulo="Registro de Personal",
-                    form_fields=_FORM_REGISTRO_PERSONAL,
-                    can_edit=can_edit,
-                    default_area=def_area_personal,
-                    unlock_area_field=ex_unlock,
-                )
+                return render_template("registro_form.html", **_ctx_registro_personal())
+            # Duplicado: no permitir el mismo documento si ya está en asignaciones/personal
+            doc_norm = re.sub(r"\D+", "", documento)
+            if doc_norm:
+                from sqlalchemy import or_ as _or
+
+                _dup = False
+                _op = _ar = None
+                for _ident, _op0, _ar0 in (
+                    RegistroAsignaciones.query.filter(
+                        _or(
+                            RegistroAsignaciones.identificacion == documento,
+                            RegistroAsignaciones.identificacion == doc_norm,
+                            RegistroAsignaciones.identificacion.like(f"%{doc_norm}%"),
+                        )
+                    )
+                    .with_entities(
+                        RegistroAsignaciones.identificacion,
+                        RegistroAsignaciones.operario,
+                        RegistroAsignaciones.area,
+                    )
+                    .limit(50)
+                    .all()
+                ):
+                    if re.sub(r"\D+", "", (_ident or "").strip()) == doc_norm:
+                        _dup = True
+                        _op, _ar = _op0, _ar0
+                        break
+                if _dup:
+                    flash(
+                        f"Este documento ya está registrado"
+                        + (f" como «{_op}»" if _op else "")
+                        + (f" en el área {_ar}." if _ar else ".")
+                        + " No se permiten duplicados.",
+                        "error",
+                    )
+                    return render_template("registro_form.html", **_ctx_registro_personal())
             talla_val = (request.form.get("talla") or "").strip()
             if not talla_val:
                 flash("Seleccione una talla.", "error")
-                return render_template(
-                    "registro_form.html",
-                    modulo_id=modulo_id,
-                    titulo="Registro de Personal",
-                    form_fields=_FORM_REGISTRO_PERSONAL,
-                    can_edit=can_edit,
-                    default_area=def_area_personal,
-                    unlock_area_field=ex_unlock,
-                )
+                return render_template("registro_form.html", **_ctx_registro_personal())
             area_personal = (request.form.get("area") or "").strip()
             if ex_unlock:
                 if not area_personal:
                     flash("Indique el área del personal (operación externa).", "error")
                     return render_template(
                         "registro_form.html",
-                        modulo_id=modulo_id,
-                        titulo="Registro de Personal",
-                        form_fields=_FORM_REGISTRO_PERSONAL,
-                        can_edit=can_edit,
-                        default_area=def_area_personal,
-                        unlock_area_field=True,
+                        **_ctx_registro_personal(unlock_area_field=True),
                     )
                 if area_personal.strip().upper() in _INTERNAS_PLANTA_UPPER:
                     flash("Esa área corresponde a planta interna; use una etiqueta de operación externa.", "error")
                     return render_template(
                         "registro_form.html",
-                        modulo_id=modulo_id,
-                        titulo="Registro de Personal",
-                        form_fields=_FORM_REGISTRO_PERSONAL,
-                        can_edit=can_edit,
-                        default_area=area_personal,
-                        unlock_area_field=True,
+                        **_ctx_registro_personal(default_area=area_personal, unlock_area_field=True),
                     )
             obj = RegistroAsignaciones(
                 id_asignaciones=_get_next_id_asignaciones(),
                 operario=nombre,
                 identificacion=documento,
-                email="",
-                telefono="",
-                cargo="",
+                email=(request.form.get("email") or "").strip(),
+                telefono=(request.form.get("telefono") or "").strip(),
+                cargo=(request.form.get("cargo") or "").strip(),
                 area=area_personal if ex_unlock else current_area,
                 talla_operarios=talla_val,
                 area_lockers=(request.form.get("area_lockers") or "").strip(),
@@ -1874,13 +2029,7 @@ def _registro_form_view(modulo_id):
     if modulo_id == "registro-personal":
         return render_template(
             "registro_form.html",
-            modulo_id=modulo_id,
-            titulo="Registro de Personal",
-            form_fields=_FORM_REGISTRO_PERSONAL,
-            can_edit=can_edit,
-            estado_activo=True,
-            default_area=def_area_personal,
-            unlock_area_field=ex_unlock,
+            **_ctx_registro_personal(estado_activo=True),
         )
     if modulo_id == "ingreso-lockers":
         return render_template(
@@ -1934,8 +2083,8 @@ _FORM_INGRESO_DOTACION = [
     {"name": "estado", "label": "Estado", "type": "text", "readonly": True, "default": "Disponible"},
 ]
 _FORM_REGISTRO_PERSONAL = [
-    {"name": "nombre", "label": "Nombre", "type": "text", "required": True},
     {"name": "documento", "label": "Documento", "type": "text", "required": True, "numeric_only": True},
+    {"name": "nombre", "label": "Nombre", "type": "text", "required": True},
     {"name": "area", "label": "Área", "type": "text"},
     {"name": "talla", "label": "Talla", "type": "select", "options": TALLAS_SELECT_OPCIONES, "required": True},
     {"name": "area_lockers", "label": "Área Lockers", "type": "select", "options": ["", "VESTIER HOMBRES", "VESTIER MUJERES", "ADMINISTRATIVO"]},
@@ -2115,7 +2264,12 @@ def modulo(modulo_id):
                     session["modulo_edit_form"] = {modulo_id: dict(request.form)}
                     return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
             if Model == HistorialRetiros and hasattr(obj, "observaciones"):
-                obj.observaciones = ((getattr(obj, "observaciones", None) or "").strip().upper())
+                _obs = ((getattr(obj, "observaciones", None) or "").strip())
+                # No alterar marcas de sync [GH:id] (evita romper idempotencia)
+                if _obs.upper().startswith("[GH:"):
+                    obj.observaciones = _obs
+                else:
+                    obj.observaciones = _obs.upper()
             if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
                 obj.area = "SIN ASIGNAR"
             if Model == SecaBotasDisponibles and hasattr(obj, "estado"):
@@ -2282,7 +2436,11 @@ def modulo(modulo_id):
                 session["modulo_crear_form"] = {modulo_id: dict(request.form)}
                 return redirect(url_for("main.modulo", modulo_id=modulo_id, crear=1))
         if Model == HistorialRetiros and hasattr(obj, "observaciones"):
-            obj.observaciones = ((getattr(obj, "observaciones", None) or "").strip().upper())
+            _obs = ((getattr(obj, "observaciones", None) or "").strip())
+            if _obs.upper().startswith("[GH:"):
+                obj.observaciones = _obs
+            else:
+                obj.observaciones = _obs.upper()
         if Model == SecaBotasDisponibles and hasattr(obj, "area") and not (getattr(obj, "area") or "").strip():
             obj.area = "SIN ASIGNAR"
         if Model == SecaBotasDisponibles and hasattr(obj, "estado"):
@@ -2371,6 +2529,44 @@ def modulo(modulo_id):
 
     # GET: listar con paginación filtrada por área actual y búsqueda
     from sqlalchemy import or_, and_, false
+
+    # Historial de Retiros: sincronizar novedades desde gestio_humana.retirado (sin sobrescribir)
+    if modulo_id == "historial-retiros" and request.method == "GET" and can_edit:
+        from app.utils.gestion_humana import (
+            area_gh_para_lockers,
+            limpiar_historial_retiros_gh,
+            sincronizar_retirados_area,
+        )
+
+        try:
+            limpiar_historial_retiros_gh()
+        except Exception:
+            pass
+
+        if area_gh_para_lockers(current_area):
+            try:
+                sync = sincronizar_retirados_area(current_area)
+                # Deduplicar también a nivel global (misma cédula en varias áreas)
+                from app.utils.gestion_humana import deduplicar_historial_retiros
+
+                deduplicar_historial_retiros(None)
+                if sync.get("ok") and (
+                    sync.get("inserted", 0) > 0
+                    or sync.get("updated", 0) > 0
+                    or sync.get("deleted_duplicates", 0) > 0
+                ):
+                    flash(
+                        f"Gestión Humana: nuevos {sync.get('inserted', 0)}, "
+                        f"actualizados {sync.get('updated', 0)}, "
+                        f"omitidos {sync.get('skipped', 0)} "
+                        f"(solo con fecha; se conserva el registro con lockers/dotación).",
+                        "success",
+                    )
+                elif sync.get("ok") is False and sync.get("error"):
+                    flash(f"No se pudo sincronizar retiros de Gestión Humana: {sync['error']}", "error")
+            except Exception as exc:  # noqa: BLE001
+                flash(f"Error al sincronizar retiros: {exc}", "error")
+
     query = Model.query
     if area_key and current_area and hasattr(Model, area_key):
         if Model == BaseDotaciones and area_key == "area_uso":

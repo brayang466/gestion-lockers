@@ -13,6 +13,15 @@
   {% endif %}
 {% endwith %}
 
+{% if modulo_id == 'historial-retiros' %}
+<p class="hint hint-gh-sync">
+  Se importan desde <strong>Gestión Humana</strong> solo retiros <strong>con fecha</strong>. Los que ya existen no se sobrescriben.
+  {% if can_edit|default(false) %}
+  <button type="button" class="btn btn-cancel btn-sm" id="btnSyncRetirosGh" style="margin-left:.5rem">Sincronizar ahora</button>
+  {% endif %}
+</p>
+{% endif %}
+
 <div class="modulo-shell">
 <div class="modulo-top-distribution">
 <div class="modulo-actions">
@@ -630,6 +639,40 @@
       e.preventDefault();
       // Sin popup: solo resalta campos faltantes y bloquea guardado
     }
+  });
+})();
+</script>
+{% endif %}
+{% if modulo_id == 'historial-retiros' and can_edit|default(false) %}
+<script>
+(function () {
+  var btn = document.getElementById('btnSyncRetirosGh');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    btn.textContent = 'Sincronizando…';
+    fetch({{ url_for('main.api_sync_retirados_gh')|tojson }}, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json' }
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        var d = res.d || {};
+        if (d.ok) {
+          alert('Sincronización OK. Nuevos: ' + (d.inserted || 0) + ' · Ya existían: ' + (d.skipped || 0));
+          window.location.reload();
+        } else {
+          alert(d.error || 'No se pudo sincronizar.');
+          btn.disabled = false;
+          btn.textContent = 'Sincronizar ahora';
+        }
+      })
+      .catch(function () {
+        alert('Error de red al sincronizar.');
+        btn.disabled = false;
+        btn.textContent = 'Sincronizar ahora';
+      });
   });
 })();
 </script>

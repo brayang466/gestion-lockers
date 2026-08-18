@@ -25,6 +25,16 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Gestión Humana (autollenado de Registro de personal). Por defecto mismo host/credenciales.
+    GH_MYSQL_HOST = (os.environ.get("GH_MYSQL_HOST") or MYSQL_HOST).strip()
+    GH_MYSQL_PORT = (os.environ.get("GH_MYSQL_PORT") or MYSQL_PORT).strip()
+    GH_MYSQL_USER = (os.environ.get("GH_MYSQL_USER") or MYSQL_USER).strip()
+    GH_MYSQL_PASSWORD = os.environ.get("GH_MYSQL_PASSWORD")
+    if GH_MYSQL_PASSWORD is None:
+        GH_MYSQL_PASSWORD = MYSQL_PASSWORD
+    GH_MYSQL_DATABASE = (os.environ.get("GH_MYSQL_DATABASE") or "gestio_humana").strip()
+    GH_ENABLED = (os.environ.get("GH_ENABLED") or "true").strip().lower() in ("1", "true", "yes")
+
     # Correo: cuenta desde la que la app ENVÍA (el enlace se envía AL correo que el usuario escribe en el formulario)
     MAIL_SERVER = (
         (os.environ.get("MAIL_SERVER") or os.environ.get("MAIL_HOST") or "").strip()

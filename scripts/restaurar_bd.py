@@ -25,12 +25,16 @@ def buscar_mysql():
     for ruta in [
         raiz / ".." / "xampp" / "mysql" / "bin" / "mysql.exe",
         Path("C:/xampp/mysql/bin/mysql.exe"),
+        Path("C:/Program Files/MariaDB 11.4/bin/mysql.exe"),
         Path("C:/Program Files/MySQL/MySQL Server 8.0/bin/mysql.exe"),
         Path("C:/Program Files/MySQL/MySQL Server 5.7/bin/mysql.exe"),
     ]:
         p = Path(ruta).resolve()
         if p.exists():
             return str(p)
+    # MariaDB en otras versiones (11.x / 10.x)
+    for p in Path("C:/Program Files").glob("MariaDB*/bin/mysql.exe"):
+        return str(p)
     return None
 
 def main():
