@@ -179,7 +179,36 @@ def import_registro_personal(r, rep, app):
         (("area de lockers",), "area_lockers"),
         (("estado",), "estado"),
     ]
-    return _import(r, rep, app, RegistroPersonal, c, "registro_personal")
+    with app.app_context():
+        if rep:
+            RegistroPersonal.query.delete()
+            db.session.commit()
+        first = r[0]
+        idx = {}
+        for headers, attr, *opt in c:
+            i = find_idx(first, headers)
+            if i is not None:
+                idx[attr] = (i, opt[0] if opt else None)
+        imp, skip = 0, 0
+        for row in r[1:]:
+            data = {}
+            for attr, (i, opt) in idx.items():
+                data[attr] = safe(row, i)
+            # Filas vacías del Excel (padding del autofiltro): no importar
+            if not any(
+                (data.get(k) or "").strip()
+                for k in ("nombre", "documento", "id_personal", "area")
+            ):
+                skip += 1
+                continue
+            try:
+                db.session.add(RegistroPersonal(**data))
+                imp += 1
+            except Exception:
+                skip += 1
+        db.session.commit()
+        print(f"registro_personal: importados {imp}, omitidos {skip}.")
+        return True
 
 # REGISTRO DE ASIGNACIONES — CSV típico: todas las áreas excepto Desposte (Desposte va en otros CSV).
 # Columnas: ID asignaciones, Codigo de Dotacion, Fecha de Entrega, Operario, Codigo de Lockets, identificacion,
@@ -495,7 +524,69 @@ def import_base_dotaciones(r, rep, app):
         (("talla",), "talla"),
         (("estado",), "estado"),
     ]
-    return _import(r, rep, app, BaseDotaciones, c, "base_dotaciones")
+
+    def _norm_estado_dot(estado_raw):
+        s = (estado_raw or "").strip()
+        if not s:
+            return "DISPONIBLE"
+        u = s.upper()
+        u = re.sub(r"^DOTACION\s+", "", u).strip()
+        if "DISP" in u:
+            return "DISPONIBLE"
+        if "ASIG" in u:
+            return "ASIGNADA"
+        if "VIS" in u:
+            return "VISITA"
+        return u
+
+    with app.app_context():
+        if rep:
+            # No tocar bloque planta Desposte
+            BaseDotaciones.query.filter(
+                db.func.upper(db.func.trim(BaseDotaciones.area_uso)) != "DESPOSTE"
+            ).delete(synchronize_session=False)
+            db.session.commit()
+        first = r[0]
+        idx = {}
+        for headers, attr, *opt in c:
+            i = find_idx(first, headers)
+            if i is not None:
+                idx[attr] = (i, opt[0] if opt else None)
+        imp, skip = 0, 0
+        for row in r[1:]:
+            data = {}
+            for attr, (i, opt) in idx.items():
+                v = safe(row, i)
+                if opt == "int":
+                    try:
+                        v = int(float(v)) if v else None
+                    except (ValueError, TypeError):
+                        v = None
+                data[attr] = v
+            codigo = (data.get("codigo") or "").strip()
+            if not codigo:
+                skip += 1
+                continue
+            area_uso = (data.get("area_uso") or "").strip()
+            if area_uso.upper() == "DESPOSTE":
+                skip += 1
+                continue
+            try:
+                db.session.add(
+                    BaseDotaciones(
+                        codigo=codigo,
+                        cantidad=data.get("cantidad"),
+                        area_uso=area_uso,
+                        talla=(data.get("talla") or "").strip().upper(),
+                        estado=_norm_estado_dot(data.get("estado")),
+                    )
+                )
+                imp += 1
+            except Exception:
+                skip += 1
+        db.session.commit()
+        print(f"base_dotaciones: importados {imp}, omitidos {skip}.")
+        return True
 
 
 # SECA BOTAS DISPONIBLES: CODIGO, AREA LOCKER, AREA, ESTADO
