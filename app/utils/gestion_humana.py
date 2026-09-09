@@ -500,11 +500,158 @@ def limpiar_historial_retiros_gh() -> dict[str, Any]:
     }
 
 
+def _liberar_dotacion_simple(codigo: str) -> None:
+    from app.models import BaseDotaciones
+
+    cod = (codigo or "").strip()
+    if not cod:
+        return
+    for reg in BaseDotaciones.query.filter(BaseDotaciones.codigo == cod).filter(
+        BaseDotaciones.estado.ilike("%asignada%")
+    ).all():
+        reg.estado = "DISPONIBLE"
+
+
+def _liberar_locker_simple(codigo: str) -> None:
+    from app.models import BaseLockers, LockerDisponibles
+
+    cod = (codigo or "").strip()
+    if not cod:
+        return
+    reg = LockerDisponibles.query.filter_by(codigo=cod).first()
+    if reg:
+        reg.estado = "disponible"
+    for reg_base in BaseLockers.query.filter(BaseLockers.codigo == cod).filter(
+        BaseLockers.estado.ilike("%asignado%")
+    ).all():
+        reg_base.estado = "disponible"
+
+
+def _liberar_seca_botas_simple(codigo: str) -> None:
+    from app.models import SecaBotasDisponibles
+
+    cod = (codigo or "").strip()
+    if not cod:
+        return
+    for reg in SecaBotasDisponibles.query.filter(SecaBotasDisponibles.codigo == cod).all():
+        reg.estado = "DISPONIBLE"
+
+
+def _buscar_asignaciones_por_documento(documento: str) -> list:
+    """Todas las filas de registro_asignaciones con la misma cédula (normalizada)."""
+    from sqlalchemy import or_
+    from app.models import RegistroAsignaciones
+
+    doc = _norm_doc(documento)
+    if not doc:
+        return []
+    candidatos = (
+        RegistroAsignaciones.query.filter(
+            or_(
+                RegistroAsignaciones.identificacion == documento,
+                RegistroAsignaciones.identificacion == doc,
+                RegistroAsignaciones.identificacion.like(f"%{doc}%"),
+            )
+        )
+        .limit(100)
+        .all()
+    )
+    return [r for r in candidatos if _norm_doc(r.identificacion) == doc]
+
+
+def _merge_campo(destino, origen, attr: str) -> bool:
+    """Copia attr de origen a destino solo si destino está vacío y origen tiene valor."""
+    cur = (getattr(destino, attr, None) or "")
+    if isinstance(cur, str):
+        cur = cur.strip()
+    else:
+        cur = cur or ""
+    new = (getattr(origen, attr, None) or "")
+    if isinstance(new, str):
+        new = new.strip()
+    if cur:
+        return False
+    if not new:
+        return False
+    setattr(destino, attr, new)
+    return True
+
+
+def aplicar_retiro_sobre_asignaciones(documento: str, hist) -> dict[str, Any]:
+    """
+    Si la persona está en registro_asignaciones:
+    - Pasa códigos/tallas/área lockers al historial de retiro (sin pisar lo ya cargado).
+    - Libera locker, dotación y seca botas.
+    - Elimina la(s) asignación(es).
+    """
+    from app import db
+
+    doc = _norm_doc(documento)
+    if not doc or hist is None:
+        return {"asignaciones_cerradas": 0, "codigos_liberados": []}
+
+    asignaciones = _buscar_asignaciones_por_documento(doc)
+    if not asignaciones:
+        return {"asignaciones_cerradas": 0, "codigos_liberados": []}
+
+    liberados: list[str] = []
+    # Preferir la asignación con más códigos
+    asignaciones_ord = sorted(asignaciones, key=_score_historial, reverse=True)
+
+    for asg in asignaciones_ord:
+        for attr in (
+            "codigo_dotacion",
+            "codigo_lockets",
+            "talla_operarios",
+            "talla_dotacion",
+            "area_lockers",
+            "operario",
+        ):
+            _merge_campo(hist, asg, attr)
+        if not (hist.area or "").strip() and (asg.area or "").strip():
+            hist.area = (asg.area or "").strip()
+        if getattr(asg, "es_planta_desposte", False):
+            hist.es_planta_desposte = True
+
+        cod_dot = (asg.codigo_dotacion or "").strip()
+        cod_lock = (asg.codigo_lockets or "").strip()
+        cod_seca = (getattr(asg, "codigo_seca_botas", None) or "").strip()
+        reg_area = (asg.area or "").strip()
+
+        if cod_dot:
+            _liberar_dotacion_simple(cod_dot)
+            liberados.append(f"dotacion:{cod_dot}")
+        if cod_lock:
+            _liberar_locker_simple(cod_lock)
+            liberados.append(f"locker:{cod_lock}")
+        if cod_seca:
+            _liberar_seca_botas_simple(cod_seca)
+            liberados.append(f"seca:{cod_seca}")
+            # Historial no tiene columna seca: dejar rastro en observaciones si no está
+            obs = (hist.observaciones or "").strip()
+            tag = f"Seca botas: {cod_seca}"
+            if tag.upper() not in obs.upper():
+                hist.observaciones = (f"{obs} | {tag}" if obs else tag)[:500]
+
+        # Si el historial quedó en otra área vacía, conservar área de la asignación
+        if reg_area and not (hist.area or "").strip():
+            hist.area = reg_area
+
+        db.session.delete(asg)
+
+    return {
+        "asignaciones_cerradas": len(asignaciones),
+        "codigos_liberados": liberados,
+    }
+
+
 def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
     """
     Sync retirados GH → historial_retiros.
     Solo con fecha. Sin duplicados por documento: conserva el de lockers
     y completa observaciones (motivo GH) si faltan.
+    Si la persona está en registro_asignaciones, cierra esa asignación,
+    pasa códigos al retiro y libera inventario.
     """
     from app import db
     from app.models import HistorialRetiros
@@ -551,6 +698,8 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
     skipped = 0
     updated = 0
     skipped_sin_fecha = 0
+    asignaciones_cerradas = 0
+    codigos_liberados_n = 0
 
     for row in rows:
         item = _row_to_retirado(row)
@@ -565,55 +714,58 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
 
         observaciones = _observaciones_desde_gh(item["tipo_retiro"], item["motivo"])
         prev = existing.get(doc)
+        hist = prev
 
-        if prev is not None:
+        if hist is not None:
             changed = False
-            prev_obs = (prev.observaciones or "").strip()
+            prev_obs = (hist.observaciones or "").strip()
             if not prev_obs and observaciones:
-                prev.observaciones = observaciones
+                hist.observaciones = observaciones
                 changed = True
             elif observaciones and item.get("motivo"):
-                # Si el guardado no trae el motivo de GH, enriquecer
                 if item["motivo"].upper() not in prev_obs.upper():
                     if not prev_obs or prev_obs.upper() in (
                         "PENDIENTE POR ASIGNAR",
                         (item.get("tipo_retiro") or "").upper(),
                     ):
-                        prev.observaciones = observaciones
+                        hist.observaciones = observaciones
                         changed = True
                     elif item["motivo"].strip() and "|" not in prev_obs:
-                        # Añadir motivo sin borrar lo existente de lockers/historial
-                        prev.observaciones = f"{prev_obs} | {item['motivo']}".strip(" |")[:500]
+                        hist.observaciones = f"{prev_obs} | {item['motivo']}".strip(" |")[:500]
                         changed = True
-            if prev.fecha_retiro is None:
-                prev.fecha_retiro = fecha
+            if hist.fecha_retiro is None:
+                hist.fecha_retiro = fecha
                 changed = True
-            if not (prev.operario or "").strip() and item.get("nombre"):
-                prev.operario = (item["nombre"] or "")[:120]
+            if not (hist.operario or "").strip() and item.get("nombre"):
+                hist.operario = (item["nombre"] or "")[:120]
                 changed = True
             if changed:
                 updated += 1
             skipped += 1
-            continue
+        else:
+            hist = HistorialRetiros(
+                identificacion=(item["documento"] or "")[:40],
+                operario=(item["nombre"] or "")[:120],
+                codigo_dotacion="",
+                codigo_lockets="",
+                area=area_lb,
+                talla_operarios="",
+                talla_dotacion="",
+                area_lockers="",
+                fecha_retiro=fecha,
+                observaciones=observaciones,
+                es_planta_desposte=False,
+            )
+            db.session.add(hist)
+            existing[doc] = hist
+            inserted += 1
 
-        hist = HistorialRetiros(
-            identificacion=(item["documento"] or "")[:40],
-            operario=(item["nombre"] or "")[:120],
-            codigo_dotacion="",
-            codigo_lockets="",
-            area=area_lb,
-            talla_operarios="",
-            talla_dotacion="",
-            area_lockers="",
-            fecha_retiro=fecha,
-            observaciones=observaciones,
-            es_planta_desposte=False,
-        )
-        db.session.add(hist)
-        existing[doc] = hist
-        inserted += 1
+        # Cerrar asignación activa (si existe) y liberar códigos
+        cierre = aplicar_retiro_sobre_asignaciones(doc, hist)
+        asignaciones_cerradas += int(cierre.get("asignaciones_cerradas") or 0)
+        codigos_liberados_n += len(cierre.get("codigos_liberados") or [])
 
-    if inserted or updated:
+    if inserted or updated or asignaciones_cerradas:
         db.session.commit()
 
     dedup = deduplicar_historial_retiros(area_lb)
@@ -625,6 +777,8 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
         "updated": updated,
         "skipped": skipped,
         "skipped_sin_fecha": skipped_sin_fecha,
+        "asignaciones_cerradas": asignaciones_cerradas,
+        "codigos_liberados": codigos_liberados_n,
         "total_gh": len(rows),
         "area_gh": area_gh,
         "area_lockers": area_lb,

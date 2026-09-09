@@ -15,7 +15,9 @@
 
 {% if modulo_id == 'historial-retiros' %}
 <p class="hint hint-gh-sync">
-  Se importan desde <strong>Gestión Humana</strong> solo retiros <strong>con fecha</strong>. Los que ya existen no se sobrescriben.
+  Se importan desde <strong>Gestión Humana</strong> solo retiros <strong>con fecha</strong>.
+  Si la persona estaba en <strong>Registro de asignaciones</strong>, se cierra esa asignación,
+  los códigos pasan al historial y quedan libres. No se crean duplicados.
   {% if can_edit|default(false) %}
   <button type="button" class="btn btn-cancel btn-sm" id="btnSyncRetirosGh" style="margin-left:.5rem">Sincronizar ahora</button>
   {% endif %}

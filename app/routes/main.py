@@ -2554,12 +2554,14 @@ def modulo(modulo_id):
                     sync.get("inserted", 0) > 0
                     or sync.get("updated", 0) > 0
                     or sync.get("deleted_duplicates", 0) > 0
+                    or sync.get("asignaciones_cerradas", 0) > 0
                 ):
                     flash(
                         f"Gestión Humana: nuevos {sync.get('inserted', 0)}, "
                         f"actualizados {sync.get('updated', 0)}, "
-                        f"omitidos {sync.get('skipped', 0)} "
-                        f"(solo con fecha; se conserva el registro con lockers/dotación).",
+                        f"asignaciones cerradas {sync.get('asignaciones_cerradas', 0)}, "
+                        f"códigos liberados {sync.get('codigos_liberados', 0)} "
+                        f"(sin duplicados; se conserva el retiro con lockers/dotación).",
                         "success",
                     )
                 elif sync.get("ok") is False and sync.get("error"):
