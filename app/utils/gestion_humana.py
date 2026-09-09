@@ -645,6 +645,71 @@ def aplicar_retiro_sobre_asignaciones(documento: str, hist) -> dict[str, Any]:
     }
 
 
+def _mejor_historial_por_documento(documento: str, prefer_area: str | None = None):
+    """Historial ganador por cédula; si hay prefer_area, prioriza esa área."""
+    from app.models import HistorialRetiros
+
+    doc = _norm_doc(documento)
+    if not doc:
+        return None
+
+    candidatos = []
+    for r in HistorialRetiros.query.order_by(HistorialRetiros.id.asc()).all():
+        if _norm_doc(r.identificacion) == doc:
+            candidatos.append(r)
+    if not candidatos:
+        return None
+
+    pref = (prefer_area or "").strip().upper()
+    if pref:
+        same = [r for r in candidatos if (r.area or "").strip().upper() == pref]
+        if same:
+            return max(same, key=_score_historial)
+    return max(candidatos, key=_score_historial)
+
+
+def cerrar_asignaciones_ya_en_historial() -> dict[str, Any]:
+    """
+    Regla: si la cédula ya está en historial_retiros, no puede seguir en asignaciones.
+    Copia códigos al retiro, libera inventario y elimina la(s) asignación(es).
+    """
+    from app.models import HistorialRetiros, RegistroAsignaciones
+
+    docs_hist: set[str] = set()
+    for r in HistorialRetiros.query.all():
+        d = _norm_doc(r.identificacion)
+        if d:
+            docs_hist.add(d)
+
+    if not docs_hist:
+        return {"asignaciones_cerradas": 0, "codigos_liberados": 0, "docs": 0}
+
+    pendientes: dict[str, str | None] = {}
+    for asg in RegistroAsignaciones.query.all():
+        d = _norm_doc(asg.identificacion)
+        if not d or d not in docs_hist:
+            continue
+        # Conservar área de la asignación para elegir historial del mismo módulo si existe
+        if d not in pendientes:
+            pendientes[d] = (asg.area or "").strip() or None
+
+    cerradas = 0
+    liberados_n = 0
+    for doc, prefer_area in pendientes.items():
+        hist = _mejor_historial_por_documento(doc, prefer_area)
+        if hist is None:
+            continue
+        cierre = aplicar_retiro_sobre_asignaciones(doc, hist)
+        cerradas += int(cierre.get("asignaciones_cerradas") or 0)
+        liberados_n += len(cierre.get("codigos_liberados") or [])
+
+    return {
+        "asignaciones_cerradas": cerradas,
+        "codigos_liberados": liberados_n,
+        "docs": len(pendientes),
+    }
+
+
 def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
     """
     Sync retirados GH → historial_retiros.
@@ -764,6 +829,12 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
         cierre = aplicar_retiro_sobre_asignaciones(doc, hist)
         asignaciones_cerradas += int(cierre.get("asignaciones_cerradas") or 0)
         codigos_liberados_n += len(cierre.get("codigos_liberados") or [])
+
+    # Barrido: quien ya figura en historial_retiros no puede seguir en asignaciones
+    # (cubre otras áreas / syncs previos que no cerraron la asignación).
+    barrido = cerrar_asignaciones_ya_en_historial()
+    asignaciones_cerradas += int(barrido.get("asignaciones_cerradas") or 0)
+    codigos_liberados_n += int(barrido.get("codigos_liberados") or 0)
 
     if inserted or updated or asignaciones_cerradas:
         db.session.commit()
