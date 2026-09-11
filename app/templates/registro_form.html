@@ -127,8 +127,21 @@
   .gh-suggest {
     position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px);
     max-height: 280px; overflow: auto;
-    background: var(--surface, #0f172a); border: 1px solid rgba(148,163,184,.35);
+    border: 1px solid rgba(248, 113, 113, 0.45);
     border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,.35);
+    background:
+      linear-gradient(120deg, rgba(220,38,38,.10), rgba(56,189,248,.08), rgba(13,148,136,.10)),
+      rgba(15, 23, 42, 0.96);
+    background-size: 220% 220%, 100% 100%;
+    animation: selectSoftShift 10s ease-in-out infinite;
+  }
+  @keyframes selectSoftShift {
+    0% { background-position: 0% 50%, 0 0; }
+    50% { background-position: 100% 50%, 0 0; }
+    100% { background-position: 0% 50%, 0 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .gh-suggest { animation: none; }
   }
   .gh-suggest-item {
     display: block; width: 100%; text-align: left; padding: .65rem .85rem;

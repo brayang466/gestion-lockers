@@ -1,5 +1,5 @@
 /**
- * LockerBeef ‚Äî Shell de aplicaci√≥n (alineado con login: azul oscuro + rojo, glass)
+ * LockerBeef ? Shell de aplicaciÛn (alineado con login: azul oscuro + rojo, glass)
  * Variables por data-theme en <html>
  */
 
@@ -26,7 +26,7 @@
   --app-rojo-claro: rgba(127, 29, 29, 0.35);
   --app-rojo-text: #fca5a5;
 
-  /* Compatibilidad plantillas antiguas (verde ‚Üí acento rojo en UI) */
+  /* Compatibilidad plantillas antiguas (verde ? acento rojo en UI) */
   --verde: var(--app-primary);
   --verde-oscuro: var(--app-primary-hover);
   --verde-claro: rgba(220, 38, 38, 0.12);
@@ -125,7 +125,7 @@ body.app-body {
   position: relative;
 }
 
-/* Fondo din√°mico (sesi√≥n iniciada) */
+/* Fondo din·mico (sesiÛn iniciada) */
 .app-bg {
   position: fixed;
   inset: 0;
@@ -505,7 +505,7 @@ h2 {
   font-weight: 600;
 }
 
-/* Grid m√≥dulos */
+/* Grid mÛdulos */
 .modulos {
   list-style: none;
   padding: 0;
@@ -633,7 +633,7 @@ h2 {
   color: #86efac;
 }
 
-/* B√∫squeda / botones m√≥dulo */
+/* B˙squeda / botones mÛdulo */
 .modulo-search-wrap {
   display: flex;
   align-items: center;
@@ -767,6 +767,38 @@ h2 {
   background: var(--app-input-bg);
   color: var(--app-text);
   transition: border-color 0.2s, box-shadow 0.2s;
+}
+.form-group select,
+.codigo-select,
+.estado-select,
+.form-select {
+  background-image:
+    linear-gradient(
+      120deg,
+      rgba(220, 38, 38, 0.07) 0%,
+      rgba(56, 189, 248, 0.06) 35%,
+      rgba(13, 148, 136, 0.08) 70%,
+      rgba(220, 38, 38, 0.05) 100%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 55%),
+    var(--app-input-bg);
+  background-size: 220% 220%, 100% 100%, 100% 100%;
+  animation: selectSoftShift 10s ease-in-out infinite;
+  border-color: rgba(148, 163, 184, 0.28);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+@keyframes selectSoftShift {
+  0% { background-position: 0% 50%, 0 0, 0 0; }
+  50% { background-position: 100% 50%, 0 0, 0 0; }
+  100% { background-position: 0% 50%, 0 0, 0 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .form-group select,
+  .codigo-select,
+  .estado-select,
+  .form-select {
+    animation: none;
+  }
 }
 .form-group input:focus,
 .form-group textarea:focus,
@@ -1404,7 +1436,7 @@ html.nav-completing body.nav-completing-done .nav-progress,
   margin-bottom: 0;
 }
 
-/* ========== Responsive (m√≥vil) ========== */
+/* ========== Responsive (mÛvil) ========== */
 @media (max-width: 900px) {
   /* Dashboard: sidebar pasa a barra superior horizontal */
   .dashboard-layout {
@@ -1478,7 +1510,7 @@ html.nav-completing body.nav-completing-done .nav-progress,
     padding: 0.45rem 0.55rem;
   }
 
-  /* M√≥dulos: tabla -> tarjetas */
+  /* MÛdulos: tabla -> tarjetas */
   .modulo-table-wrap {
     overflow-x: visible;
   }
@@ -1531,13 +1563,13 @@ html.nav-completing body.nav-completing-done .nav-progress,
   margin: 0.25rem 0;
 }
 
-/* Tabla Registro de Asignaciones (edici√≥n): solo columna del campo activo */
+/* Tabla Registro de Asignaciones (ediciÛn): solo columna del campo activo */
 .modulo-table.js-asignaciones-edit-focus thead th.col-edit-hidden,
 .modulo-table.js-asignaciones-edit-focus tbody td.col-edit-hidden {
   display: none !important;
 }
 
-/* Filas consultables ‚Üí modal detalle */
+/* Filas consultables ? modal detalle */
 .modulo-row-clickable {
   cursor: pointer;
 }
@@ -1548,7 +1580,7 @@ html.theme-light .modulo-row-clickable:hover {
   background: rgba(185, 28, 28, 0.06);
 }
 
-/* Modal detalle por fila: cabe en pantalla, contenido centrado al t√≠tulo */
+/* Modal detalle por fila: cabe en pantalla, contenido centrado al tÌtulo */
 @keyframes modal-ver-registro-pop {
   from {
     opacity: 0;
@@ -1602,7 +1634,7 @@ html.theme-light .modulo-row-clickable:hover {
   position: relative;
   width: min(100%, 420px);
   max-width: min(100%, 420px);
-  /* Nunca m√°s alto que la ventana √∫til; el listado hace scroll dentro de .modal-ver-registro-body */
+  /* Nunca m·s alto que la ventana ˙til; el listado hace scroll dentro de .modal-ver-registro-body */
   max-height: min(72vh, calc(100vh - 2.25rem));
   max-height: min(74svh, calc(100svh - 2rem));
   max-height: min(calc(100dvh - 2rem), 90dvh);
@@ -1691,7 +1723,7 @@ html.theme-light .modulo-row-clickable:hover {
   font-size: clamp(0.78rem, 2.4vw, 0.88rem);
 }
 
-/* Registro de Asignaciones: etiqueta + valor en l√≠nea (altura ~ como zoom 80%) */
+/* Registro de Asignaciones: etiqueta + valor en lÌnea (altura ~ como zoom 80%) */
 .modal-ver-registro-body .modal-ver-registro-field--compact {
   flex-direction: row;
   flex-wrap: wrap;
@@ -1762,7 +1794,7 @@ html.theme-light .modulo-row-clickable:hover {
 .modal-ver-registro-body {
   margin: 0;
   padding: 0;
-  /* flex: 1 1 0 + min-height: 0 colapsaba el √°rea a 0 px cuando el flex repart√≠a espacio; el listado quedaba invisible */
+  /* flex: 1 1 0 + min-height: 0 colapsaba el ·rea a 0 px cuando el flex repartÌa espacio; el listado quedaba invisible */
   flex: 0 1 auto;
   min-height: 2.25rem;
   max-height: min(52vh, 380px);
@@ -1955,7 +1987,7 @@ html.theme-light .modulo-row-clickable:hover {
     margin-right: auto;
   }
 
-  /* Reducir costo visual en m√≥vil */
+  /* Reducir costo visual en mÛvil */
   .app-bg,
   .app-bg__mesh {
     animation: none !important;
@@ -1970,7 +2002,7 @@ html.theme-light .modulo-row-clickable:hover {
     -webkit-backdrop-filter: none;
   }
 
-  /* M√≥dulos: toolbar y filtros m√°s c√≥modos */
+  /* MÛdulos: toolbar y filtros m·s cÛmodos */
   .modulo-actions {
     gap: 0.5rem;
   }
@@ -1980,7 +2012,7 @@ html.theme-light .modulo-row-clickable:hover {
   }
 }
 
-/* ‚Äî‚Äî Calendario recordatorios (dashboard) ‚Äî‚Äî */
+/* ?? Calendario recordatorios (dashboard) ?? */
 .reminders-widget-header {
   display: flex;
   align-items: center;
@@ -2335,7 +2367,7 @@ html.theme-light .modulo-row-clickable:hover {
   }
 }
 
-/* √Åreas */
+/* ¡reas */
 .areas-page {
   min-height: 80vh;
   display: flex;
@@ -2635,7 +2667,7 @@ html.theme-light .modulo-row-clickable:hover {
   }
 }
 
-/* ========== P√°gina m√≥dulo (listado) ========== */
+/* ========== P·gina mÛdulo (listado) ========== */
 .modulo-page {
   animation: moduloEnter 0.45s ease-out forwards;
 }
@@ -2680,7 +2712,7 @@ html.theme-light .modulo-row-clickable:hover {
   margin-bottom: 0.75rem;
 }
 
-/* Registro de Asignaciones: oculta la barra horizontal (el √°rea sigue siendo desplazable) */
+/* Registro de Asignaciones: oculta la barra horizontal (el ·rea sigue siendo desplazable) */
 .modulo-table-wrap--hide-x-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
@@ -2936,14 +2968,22 @@ html.theme-light .modulo-row-clickable:hover {
   font-size: 1rem;
   font-weight: 700;
   border: 2px solid #0d9488;
-  background: linear-gradient(180deg, rgba(13, 148, 136, 0.08) 0%, var(--app-input-bg) 100%);
   color: var(--app-text);
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%230d9488'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 1.35rem;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%230d9488'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E"),
+    linear-gradient(
+      120deg,
+      rgba(13, 148, 136, 0.16) 0%,
+      rgba(56, 189, 248, 0.08) 40%,
+      rgba(13, 148, 136, 0.12) 100%
+    ),
+    linear-gradient(180deg, rgba(13, 148, 136, 0.08) 0%, var(--app-input-bg) 100%);
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  background-position: right 0.75rem center, 0% 50%, 0 0;
+  background-size: 1.35rem, 220% 220%, 100% 100%;
+  animation: selectSoftShift 10s ease-in-out infinite;
   box-shadow: 0 2px 12px rgba(13, 148, 136, 0.18);
 }
 .codigo-select:focus {
@@ -3460,7 +3500,7 @@ html.theme-light .modulo-row-clickable:hover {
   margin-top: -0.1rem;
 }
 
-/* óó Usabilidad por usuario óó */
+/* ?? Usabilidad por usuario ?? */
 .usabilidad-page { max-width: 1100px; margin: 0 auto; }
 .usabilidad-header { margin-bottom: 1.25rem; }
 .usabilidad-header h1 { margin: 0 0 0.35rem; font-size: 1.55rem; font-weight: 800; }

@@ -369,6 +369,8 @@
   var inpLock = document.getElementById('f_codigo_lockets');
   var spanDot = document.getElementById('estado-codigo-dotacion');
   var spanLock = document.getElementById('estado-codigo-lockets');
+  var originalDot = {{ (edit_data.get('codigo_dotacion', '') if edit_data else '')|tojson }};
+  var originalLock = {{ (edit_data.get('codigo_lockets', '') if edit_data else '')|tojson }};
   function actualizarEstadosCodigos() {
     if (!verificarCodigosUrl || (!spanDot && !spanLock)) return;
     var codDot = (inpDot && inpDot.value) ? inpDot.value.trim() : '';
@@ -383,14 +385,34 @@
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (spanDot) {
-          if (data.codigo_dotacion === 'disponible') { spanDot.textContent = 'Disponible'; spanDot.className = 'codigo-estado disponible'; }
-          else if (data.codigo_dotacion === 'asignado') { spanDot.textContent = 'No disponible. Por favor asigne otro.'; spanDot.className = 'codigo-estado asignado'; }
-          else { spanDot.textContent = ''; spanDot.className = 'codigo-estado'; }
+          if (codDot && originalDot && codDot === String(originalDot).trim()) {
+            spanDot.textContent = 'Código actual (sin cambio)';
+            spanDot.className = 'codigo-estado disponible';
+          } else if (data.codigo_dotacion === 'disponible') {
+            spanDot.textContent = 'Disponible';
+            spanDot.className = 'codigo-estado disponible';
+          } else if (data.codigo_dotacion === 'asignado') {
+            spanDot.textContent = 'No disponible. Por favor asigne otro.';
+            spanDot.className = 'codigo-estado asignado';
+          } else {
+            spanDot.textContent = '';
+            spanDot.className = 'codigo-estado';
+          }
         }
         if (spanLock) {
-          if (data.codigo_lockets === 'disponible') { spanLock.textContent = 'Disponible'; spanLock.className = 'codigo-estado disponible'; }
-          else if (data.codigo_lockets === 'asignado') { spanLock.textContent = 'No disponible. Por favor asigne otro.'; spanLock.className = 'codigo-estado asignado'; }
-          else { spanLock.textContent = ''; spanLock.className = 'codigo-estado'; }
+          if (codLock && originalLock && codLock === String(originalLock).trim()) {
+            spanLock.textContent = 'Código actual (sin cambio)';
+            spanLock.className = 'codigo-estado disponible';
+          } else if (data.codigo_lockets === 'disponible') {
+            spanLock.textContent = 'Disponible';
+            spanLock.className = 'codigo-estado disponible';
+          } else if (data.codigo_lockets === 'asignado') {
+            spanLock.textContent = 'No disponible. Por favor asigne otro.';
+            spanLock.className = 'codigo-estado asignado';
+          } else {
+            spanLock.textContent = '';
+            spanLock.className = 'codigo-estado';
+          }
         }
       })
       .catch(function() {

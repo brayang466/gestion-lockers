@@ -480,12 +480,18 @@ def _get_next_id_asignaciones():
     return "ASG-{:03d}".format(max_num + 1)
 
 
-def _codigo_dotacion_disponible(codigo, area=None):
-    """True si el código existe en Base de Dotaciones con estado DISPONIBLE. Si area='DESPOSTE' solo busca en dotaciones DESPOSTE; si area es otra, excluye DESPOSTE."""
+def _codigo_dotacion_disponible(codigo, area=None, permitir_codigo=None):
+    """True si el código existe en Base de Dotaciones con estado DISPONIBLE.
+    Si area='DESPOSTE' solo busca en dotaciones DESPOSTE; si area es otra, excluye DESPOSTE.
+    permitir_codigo: al editar, acepta el código ya asignado al mismo registro.
+    """
     if not (codigo or "").strip():
         return True
+    cod = (codigo or "").strip()
+    if permitir_codigo and cod == (permitir_codigo or "").strip():
+        return True
     q = BaseDotaciones.query.filter(
-        BaseDotaciones.codigo == (codigo or "").strip(),
+        BaseDotaciones.codigo == cod,
         BaseDotaciones.estado.ilike("%disponible%"),
     ).filter(~BaseDotaciones.estado.ilike("%asignada%"))
     ca = (area or "").strip().upper()
@@ -496,12 +502,17 @@ def _codigo_dotacion_disponible(codigo, area=None):
     return q.first() is not None
 
 
-def _codigo_locker_disponible(codigo):
-    """True si el código existe en Lockers Disponibles con estado DISPONIBLE."""
+def _codigo_locker_disponible(codigo, permitir_codigo=None):
+    """True si el código existe en Lockers Disponibles con estado DISPONIBLE.
+    permitir_codigo: al editar, acepta el código ya asignado al mismo registro.
+    """
     if not (codigo or "").strip():
         return True
+    cod = (codigo or "").strip()
+    if permitir_codigo and cod == (permitir_codigo or "").strip():
+        return True
     return (
-        LockerDisponibles.query.filter_by(codigo=(codigo or "").strip())
+        LockerDisponibles.query.filter_by(codigo=cod)
         .filter(db.func.lower(LockerDisponibles.estado) == "disponible")
         .first()
         is not None
@@ -1321,8 +1332,11 @@ def api_verificar_codigos():
 @login_required
 @_require_current_area
 def api_empleados_gh():
-    """Autollenado: empleados de gestio_humana filtrados por área (mapeada), más recientes primero."""
+    """Autollenado: empleados de gestio_humana filtrados por área (mapeada), más recientes primero.
+    Excluye cédulas ya registradas en el aplicativo (personal pendiente o con asignación).
+    """
     from flask import jsonify
+    import re as _re
     from app.utils.gestion_humana import area_gh_para_lockers, buscar_empleados
 
     current_area = (session.get("current_area") or "").strip()
@@ -1331,7 +1345,30 @@ def api_empleados_gh():
         limit = int(request.args.get("limit") or 25)
     except (TypeError, ValueError):
         limit = 25
-    items, err = buscar_empleados(current_area, q=q, limit=limit, solo_activos=True)
+    # Pedir más resultados a GH para compensar los que se filtrarán por ya registrados
+    fetch_limit = min(max(limit * 3, 40), 80)
+    items, err = buscar_empleados(current_area, q=q, limit=fetch_limit, solo_activos=True)
+    if items:
+        ya_reg = set()
+        for (ident,) in (
+            RegistroAsignaciones.query.with_entities(RegistroAsignaciones.identificacion).all()
+        ):
+            d = _re.sub(r"\D+", "", (ident or "").strip())
+            if d:
+                ya_reg.add(d)
+        filtrados = []
+        for it in items:
+            doc = _re.sub(
+                r"\D+",
+                "",
+                str(it.get("documento") or it.get("identificacion") or it.get("id_cedula") or "").strip(),
+            )
+            if doc and doc in ya_reg:
+                continue
+            filtrados.append(it)
+            if len(filtrados) >= limit:
+                break
+        items = filtrados
     return jsonify(
         {
             "ok": err is None,
@@ -2342,12 +2379,21 @@ def modulo(modulo_id):
                     return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
                 cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
                 cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
+                # Edición en Registro de asignaciones: no vaciar códigos por accidente
+                # (si el select no envía el valor actual, el registro no debe pasar a pendiente).
+                if modulo_id == "registro-asignaciones":
+                    if not cod_dot and old_cod_dot:
+                        obj.codigo_dotacion = old_cod_dot
+                        cod_dot = old_cod_dot
+                    if not cod_lock and old_cod_lock:
+                        obj.codigo_lockets = old_cod_lock
+                        cod_lock = old_cod_lock
                 reg_area = (getattr(obj, "area", None) or "").strip() or current_area
-                if cod_dot and not _codigo_dotacion_disponible(cod_dot, area=reg_area):
+                if cod_dot and not _codigo_dotacion_disponible(cod_dot, area=reg_area, permitir_codigo=old_cod_dot):
                     flash("El Código de dotación no está disponible (ya asignado o no existe en Dotaciones Disponibles). Por favor asigne otro.", "error")
                     session["modulo_edit_form"] = {modulo_id: dict(request.form)}
                     return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
-                if cod_lock and not _codigo_locker_disponible(cod_lock):
+                if cod_lock and not _codigo_locker_disponible(cod_lock, permitir_codigo=old_cod_lock):
                     flash("El Código de locker no está disponible (ya asignado o no existe en Lockers Disponibles). Por favor asigne otro.", "error")
                     session["modulo_edit_form"] = {modulo_id: dict(request.form)}
                     return redirect(url_for("main.modulo", modulo_id=modulo_id, edit_id=edit_id, page=next_page))
@@ -2917,6 +2963,18 @@ def modulo(modulo_id):
             .all()
             if r[0]
         ]
+    # Al editar: incluir códigos actuales aunque ya no estén "disponibles",
+    # para no vaciar el select y mandar el registro a Personal pendiente.
+    if edit_data and modulo_id in ("registro-asignaciones", "registro-personal"):
+        cur_dot = (edit_data.get("codigo_dotacion") or "").strip()
+        if cur_dot and cur_dot not in opciones_dotacion:
+            opciones_dotacion = [cur_dot] + list(opciones_dotacion)
+        cur_lock = (edit_data.get("codigo_lockets") or "").strip()
+        if cur_lock and cur_lock not in opciones_locker:
+            opciones_locker = [cur_lock] + list(opciones_locker)
+        cur_sb = (edit_data.get("codigo_seca_botas") or "").strip()
+        if cur_sb and cur_sb not in opciones_seca_botas:
+            opciones_seca_botas = [cur_sb] + list(opciones_seca_botas)
     _mod_nav = dict(MODULOS_CONFIG)
     if _is_externos_area(current_area):
         _mod_nav.pop("personal-presupuestado", None)
