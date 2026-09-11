@@ -1403,13 +1403,42 @@ def api_empleados_gh():
 @login_required
 @_require_current_area
 def api_empleado_gh_detalle(documento):
-    """Detalle de un empleado de Gestión Humana por cédula (dentro del área actual mapeada)."""
+    """Detalle de un empleado de Gestión Humana por cédula (dentro del área actual mapeada).
+    Solo activos nuevos (no registrados aún en asignaciones)."""
     from flask import jsonify
+    import re as _re
     from app.utils.gestion_humana import obtener_empleado_por_cedula
 
     current_area = (session.get("current_area") or "").strip()
     item, err = obtener_empleado_por_cedula(documento, current_area=current_area)
-    return jsonify({"ok": item is not None, "error": err, "item": item})
+    if item is None:
+        return jsonify({"ok": False, "error": err, "item": None})
+
+    estado = (item.get("estado") or "").strip().upper()
+    if estado and estado != "ACTIVO":
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"El empleado figura como {estado} en Gestión Humana; no aplica para registro nuevo.",
+                "item": None,
+            }
+        )
+
+    doc = _re.sub(r"\D+", "", str(item.get("documento") or documento or "").strip())
+    if doc:
+        for (ident,) in RegistroAsignaciones.query.with_entities(
+            RegistroAsignaciones.identificacion
+        ).all():
+            if _re.sub(r"\D+", "", (ident or "").strip()) == doc:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": "Esta cédula ya está en registro de asignaciones.",
+                        "item": None,
+                    }
+                )
+
+    return jsonify({"ok": True, "error": None, "item": item})
 
 
 @bp.route("/dashboard/api/retirados-gh")
@@ -2595,12 +2624,18 @@ def modulo(modulo_id):
     # GET: listar con paginación filtrada por área actual y búsqueda
     from sqlalchemy import or_, and_, false
 
-    # Historial de Retiros: sincronizar novedades desde gestio_humana.retirado (sin sobrescribir)
-    if modulo_id == "historial-retiros" and request.method == "GET" and can_edit:
+    # Sync GH → historial + sacar INACTIVOS de asignaciones (también al abrir
+    # asignaciones / registro personal, no solo historial de retiros).
+    if (
+        modulo_id in ("historial-retiros", "registro-asignaciones", "registro-personal")
+        and request.method == "GET"
+        and can_edit
+    ):
         from app.utils.gestion_humana import (
             area_gh_para_lockers,
             limpiar_historial_retiros_gh,
             sincronizar_retirados_area,
+            deduplicar_historial_retiros,
         )
 
         try:
@@ -2611,9 +2646,6 @@ def modulo(modulo_id):
         if area_gh_para_lockers(current_area):
             try:
                 sync = sincronizar_retirados_area(current_area)
-                # Deduplicar también a nivel global (misma cédula en varias áreas)
-                from app.utils.gestion_humana import deduplicar_historial_retiros
-
                 deduplicar_historial_retiros(None)
                 if sync.get("ok") and (
                     sync.get("inserted", 0) > 0
@@ -2626,7 +2658,7 @@ def modulo(modulo_id):
                         f"actualizados {sync.get('updated', 0)}, "
                         f"asignaciones cerradas {sync.get('asignaciones_cerradas', 0)}, "
                         f"códigos liberados {sync.get('codigos_liberados', 0)} "
-                        f"(sin duplicados; se conserva el retiro con lockers/dotación).",
+                        f"(INACTIVOS → historial; ACTIVO/recontratados se conservan).",
                         "success",
                     )
                 elif sync.get("ok") is False and sync.get("error"):

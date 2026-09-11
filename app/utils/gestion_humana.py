@@ -670,35 +670,172 @@ def _mejor_historial_por_documento(documento: str, prefer_area: str | None = Non
     return max(candidatos, key=_score_historial)
 
 
-def cerrar_asignaciones_ya_en_historial() -> dict[str, Any]:
+def _estados_gh_por_documentos(docs: set[str]) -> dict[str, str]:
+    """cédula normalizada → estado GH (ACTIVO/INACTIVO/…). Vacío si no hay ficha."""
+    out: dict[str, str] = {}
+    docs = {d for d in docs if d}
+    if not docs or not _gh_enabled():
+        return out
+    try:
+        conn = _connect()
+        try:
+            with conn.cursor() as cur:
+                # Consulta por lotes para no saturar IN (...)
+                batch = list(docs)
+                for i in range(0, len(batch), 200):
+                    chunk = batch[i : i + 200]
+                    placeholders = ",".join(["%s"] * len(chunk))
+                    cur.execute(
+                        f"""
+                        SELECT id_cedula, estado
+                        FROM empleado
+                        WHERE id_cedula IN ({placeholders})
+                        """,
+                        chunk,
+                    )
+                    for row in cur.fetchall() or []:
+                        d = _norm_doc(row.get("id_cedula"))
+                        if d:
+                            out[d] = (row.get("estado") or "").strip().upper()
+        finally:
+            conn.close()
+    except Exception:
+        return out
+    return out
+
+
+def _ultimo_retiro_gh_por_documento(documento: str) -> dict | None:
+    """Último retiro en GH (tabla retirado) para la cédula, o None."""
+    doc = _norm_doc(documento)
+    if not doc or not _gh_enabled():
+        return None
+    try:
+        conn = _connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id_retiro, id_cedula, apellidos_nombre, area, fecha_retiro,
+                           tipo_retiro, motivo
+                    FROM retirado
+                    WHERE id_cedula = %s
+                      AND fecha_retiro IS NOT NULL
+                      AND TRIM(fecha_retiro) <> ''
+                    ORDER BY STR_TO_DATE(NULLIF(TRIM(fecha_retiro), ''), '%%d/%%m/%%Y') DESC,
+                             id_retiro DESC
+                    LIMIT 1
+                    """,
+                    (doc,),
+                )
+                row = cur.fetchone()
+        finally:
+            conn.close()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return _row_to_retirado(row)
+
+
+def _asegurar_historial_baja(
+    documento: str,
+    *,
+    area_lb: str,
+    nombre: str = "",
+    fecha=None,
+    observaciones: str = "",
+):
+    """Obtiene o crea historial de retiro para la cédula en el área dada."""
+    from app import db
+    from app.models import HistorialRetiros
+
+    doc = _norm_doc(documento)
+    if not doc:
+        return None
+    hist = _mejor_historial_por_documento(doc, area_lb)
+    if hist is not None:
+        if fecha and hist.fecha_retiro is None:
+            hist.fecha_retiro = fecha
+        if observaciones and not (hist.observaciones or "").strip():
+            hist.observaciones = observaciones[:500]
+        if nombre and not (hist.operario or "").strip():
+            hist.operario = nombre[:120]
+        return hist
+
+    hist = HistorialRetiros(
+        identificacion=(documento or doc)[:40],
+        operario=(nombre or "")[:120],
+        codigo_dotacion="",
+        codigo_lockets="",
+        area=area_lb,
+        talla_operarios="",
+        talla_dotacion="",
+        area_lockers="",
+        fecha_retiro=fecha or datetime.utcnow(),
+        observaciones=(observaciones or "BAJA / INACTIVO EN GESTIÓN HUMANA")[:500],
+        es_planta_desposte=False,
+    )
+    db.session.add(hist)
+    return hist
+
+
+def cerrar_asignaciones_no_activos_gh(area_lockers: str | None = None) -> dict[str, Any]:
     """
-    Regla: si la cédula ya está en historial_retiros, no puede seguir en asignaciones.
-    Copia códigos al retiro, libera inventario y elimina la(s) asignación(es).
+    Regla de negocio:
+    - Si en GH está ACTIVO → puede permanecer en asignaciones (incluye recontratados
+      que ya tengan un historial de retiro anterior).
+    - Si en GH está INACTIVO u otro estado ≠ ACTIVO → debe salir de asignaciones,
+      pasar/asegurar historial de retiros y liberar códigos.
+    - Si no hay ficha en GH (externos / otras áreas) → no se toca.
     """
-    from app.models import HistorialRetiros, RegistroAsignaciones
+    from app import db
+    from app.models import RegistroAsignaciones
 
-    docs_hist: set[str] = set()
-    for r in HistorialRetiros.query.all():
-        d = _norm_doc(r.identificacion)
-        if d:
-            docs_hist.add(d)
+    q = RegistroAsignaciones.query
+    if area_lockers:
+        q = q.filter(RegistroAsignaciones.area == area_lockers)
 
-    if not docs_hist:
-        return {"asignaciones_cerradas": 0, "codigos_liberados": 0, "docs": 0}
-
-    pendientes: dict[str, str | None] = {}
-    for asg in RegistroAsignaciones.query.all():
-        d = _norm_doc(asg.identificacion)
-        if not d or d not in docs_hist:
-            continue
-        # Conservar área de la asignación para elegir historial del mismo módulo si existe
-        if d not in pendientes:
-            pendientes[d] = (asg.area or "").strip() or None
+    filas = q.all()
+    docs = {_norm_doc(r.identificacion) for r in filas if _norm_doc(r.identificacion)}
+    estados = _estados_gh_por_documentos(docs)
 
     cerradas = 0
     liberados_n = 0
-    for doc, prefer_area in pendientes.items():
-        hist = _mejor_historial_por_documento(doc, prefer_area)
+    procesados = 0
+    omitidos_activos = 0
+    omitidos_sin_ficha = 0
+
+    vistos: set[str] = set()
+    for asg in filas:
+        doc = _norm_doc(asg.identificacion)
+        if not doc or doc in vistos:
+            continue
+        est = estados.get(doc)
+        if not est:
+            omitidos_sin_ficha += 1
+            continue
+        if est == "ACTIVO":
+            omitidos_activos += 1
+            continue
+
+        vistos.add(doc)
+        procesados += 1
+        area_lb = (asg.area or area_lockers or "").strip() or "BENEFICIO"
+        ret = _ultimo_retiro_gh_por_documento(doc)
+        fecha = _parse_fecha_gh((ret or {}).get("fecha_retiro")) if ret else None
+        obs = (
+            _observaciones_desde_gh((ret or {}).get("tipo_retiro") or "", (ret or {}).get("motivo") or "")
+            if ret
+            else f"INACTIVO EN GESTIÓN HUMANA ({est})"
+        )
+        nombre = (asg.operario or "").strip() or ((ret or {}).get("nombre") or "")
+        hist = _asegurar_historial_baja(
+            doc,
+            area_lb=area_lb,
+            nombre=nombre,
+            fecha=fecha,
+            observaciones=obs,
+        )
         if hist is None:
             continue
         cierre = aplicar_retiro_sobre_asignaciones(doc, hist)
@@ -708,8 +845,18 @@ def cerrar_asignaciones_ya_en_historial() -> dict[str, Any]:
     return {
         "asignaciones_cerradas": cerradas,
         "codigos_liberados": liberados_n,
-        "docs": len(pendientes),
+        "docs": procesados,
+        "omitidos_activos": omitidos_activos,
+        "omitidos_sin_ficha": omitidos_sin_ficha,
     }
+
+
+def cerrar_asignaciones_ya_en_historial() -> dict[str, Any]:
+    """
+    Compatibilidad: ya no cierra a recontratados (ACTIVO en GH).
+    Delega en cerrar_asignaciones_no_activos_gh.
+    """
+    return cerrar_asignaciones_no_activos_gh(None)
 
 
 def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
@@ -717,8 +864,12 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
     Sync retirados GH → historial_retiros.
     Solo con fecha. Sin duplicados por documento: conserva el de lockers
     y completa observaciones (motivo GH) si faltan.
-    Si la persona está en registro_asignaciones, cierra esa asignación,
-    pasa códigos al retiro y libera inventario.
+
+    Cierre de asignaciones:
+    - Si la cédula está INACTIVA (u otro estado ≠ ACTIVO) en GH → cierra
+      asignación, pasa a historial y libera códigos.
+    - Si está ACTIVO (recontratados con retiro antiguo) → NO se cierra.
+    - Barrido global por estado GH (todas las áreas de lockers).
     """
     from app import db
     from app.models import HistorialRetiros
@@ -765,11 +916,16 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
     skipped = 0
     updated = 0
     skipped_sin_fecha = 0
+    skipped_activos_rehire = 0
     asignaciones_cerradas = 0
     codigos_liberados_n = 0
 
-    for row in rows:
-        item = _row_to_retirado(row)
+    items_ret = [_row_to_retirado(r) for r in rows]
+    estados_gh = _estados_gh_por_documentos(
+        {_norm_doc(it.get("documento")) for it in items_ret if _norm_doc(it.get("documento"))}
+    )
+
+    for item in items_ret:
         doc = _norm_doc(item["documento"])
         fecha = _parse_fecha_gh(item["fecha_retiro"])
         if not fecha:
@@ -827,14 +983,20 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
             existing[doc] = hist
             inserted += 1
 
-        # Cerrar asignación activa (si existe) y liberar códigos
+        # Solo cerrar asignación si HOY no está ACTIVO en GH (recontratados se quedan).
+        if estados_gh.get(doc) == "ACTIVO":
+            skipped_activos_rehire += 1
+            continue
+
         cierre = aplicar_retiro_sobre_asignaciones(doc, hist)
         asignaciones_cerradas += int(cierre.get("asignaciones_cerradas") or 0)
         codigos_liberados_n += len(cierre.get("codigos_liberados") or [])
 
-    # Barrido: quien ya figura en historial_retiros no puede seguir en asignaciones
-    # (cubre otras áreas / syncs previos que no cerraron la asignación).
-    barrido = cerrar_asignaciones_ya_en_historial()
+    # Barrido global: cualquier asignación cuyo estado en GH ≠ ACTIVO
+    # (INACTIVO/retirado) sale a historial. ACTIVO (recontratados) se conserva.
+    # No se limita al área de la sesión: una persona en PCC puede estar
+    # inactiva aunque el usuario esté en BENEFICIO.
+    barrido = cerrar_asignaciones_no_activos_gh(None)
     asignaciones_cerradas += int(barrido.get("asignaciones_cerradas") or 0)
     codigos_liberados_n += int(barrido.get("codigos_liberados") or 0)
 
@@ -852,8 +1014,10 @@ def sincronizar_retirados_area(current_area: str) -> dict[str, Any]:
         "skipped_sin_fecha": skipped_sin_fecha,
         "asignaciones_cerradas": asignaciones_cerradas,
         "codigos_liberados": codigos_liberados_n,
+        "skipped_activos_rehire": skipped_activos_rehire,
         "total_gh": len(rows),
         "area_gh": area_gh,
         "area_lockers": area_lb,
         "deleted_duplicates": dedup.get("deleted_duplicates", 0),
+        "barrido": barrido,
     }
