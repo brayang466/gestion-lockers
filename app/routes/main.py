@@ -1334,6 +1334,11 @@ def api_verificar_codigos():
 def api_empleados_gh():
     """Autollenado: empleados de gestio_humana filtrados por área (mapeada), más recientes primero.
     Excluye cédulas ya registradas en el aplicativo (personal pendiente o con asignación).
+
+    La cantidad del listado depende de:
+    - activos en GH del área, y
+    - cuántos ya existen en registro_asignaciones local.
+    Por eso local y servidor pueden diferir si no comparten la misma BD de asignaciones/GH.
     """
     from flask import jsonify
     import re as _re
@@ -1342,12 +1347,15 @@ def api_empleados_gh():
     current_area = (session.get("current_area") or "").strip()
     q = (request.args.get("q") or "").strip()
     try:
-        limit = int(request.args.get("limit") or 25)
+        limit = int(request.args.get("limit") or 40)
     except (TypeError, ValueError):
-        limit = 25
-    # Pedir más resultados a GH para compensar los que se filtrarán por ya registrados
-    fetch_limit = min(max(limit * 3, 40), 80)
-    items, err = buscar_empleados(current_area, q=q, limit=fetch_limit, solo_activos=True)
+        limit = 40
+    limit = max(1, min(limit, 100))
+    # Traer el universo del área (hasta 500) y filtrar ya registrados,
+    # para no perder libres “viejos” por un LIMIT corto de GH.
+    items, err = buscar_empleados(current_area, q=q, limit=500, solo_activos=True)
+    total_gh = len(items or [])
+    ya_reg_n = 0
     if items:
         ya_reg = set()
         for (ident,) in (
@@ -1364,6 +1372,7 @@ def api_empleados_gh():
                 str(it.get("documento") or it.get("identificacion") or it.get("id_cedula") or "").strip(),
             )
             if doc and doc in ya_reg:
+                ya_reg_n += 1
                 continue
             filtrados.append(it)
             if len(filtrados) >= limit:
@@ -1376,6 +1385,16 @@ def api_empleados_gh():
             "area_lockers": current_area,
             "area_gh": area_gh_para_lockers(current_area),
             "items": items,
+            "meta": {
+                "total_gh_activos": total_gh,
+                "ya_registrados_en_app": ya_reg_n,
+                "disponibles_mostrados": len(items or []),
+                "nota": (
+                    "Solo se listan activos de GH que aún no están en el aplicativo. "
+                    "Si local y servidor no coinciden, sincroniza registro_asignaciones "
+                    "y/o la BD gestio_humana."
+                ),
+            },
         }
     )
 

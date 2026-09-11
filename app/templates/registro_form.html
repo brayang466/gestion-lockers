@@ -229,18 +229,29 @@
     box.hidden = false;
     box.innerHTML = '<div class="gh-suggest-status"' + (isError ? ' style="color:#f87171"' : '') + '>' + text + '</div>';
   }
-  function render(items) {
+  function render(items, meta) {
     if (!box) return;
+    meta = meta || {};
     if (!items || !items.length) {
-      showStatus('Sin resultados en Gestión Humana para esta área.');
+      var emptyMsg = 'Sin personal pendiente de registrar en esta área.';
+      if (meta.ya_registrados_en_app) {
+        emptyMsg += ' (' + meta.ya_registrados_en_app + ' ya están en el aplicativo).';
+      }
+      showStatus(emptyMsg);
       return;
     }
     box.hidden = false;
-    box.innerHTML = items.map(function (it, idx) {
-      var meta = (it.fecha_ingreso ? ('Ingreso: ' + it.fecha_ingreso) : '') + (it.estado ? (' · ' + it.estado) : '');
+    var head = '';
+    if (meta.total_gh_activos != null) {
+      head = '<div class="gh-suggest-status">Disponibles: ' + (meta.disponibles_mostrados || items.length) +
+        ' · Ya en app: ' + (meta.ya_registrados_en_app || 0) +
+        ' · Activos GH: ' + meta.total_gh_activos + '</div>';
+    }
+    box.innerHTML = head + items.map(function (it, idx) {
+      var metaLine = (it.fecha_ingreso ? ('Ingreso: ' + it.fecha_ingreso) : '') + (it.estado ? (' · ' + it.estado) : '');
       return '<button type="button" class="gh-suggest-item" role="option" data-idx="' + idx + '">' +
         '<strong>' + (it.documento || '') + '</strong> — ' + (it.nombre || '') +
-        (meta ? '<span class="gh-suggest-meta">' + meta + '</span>' : '') +
+        (metaLine ? '<span class="gh-suggest-meta">' + metaLine + '</span>' : '') +
         '</button>';
     }).join('');
     Array.prototype.forEach.call(box.querySelectorAll('.gh-suggest-item'), function (btn) {
@@ -258,7 +269,7 @@
     if (!force && query === lastQ) return;
     lastQ = query;
     showStatus('Buscando…');
-    var url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(query) + '&limit=20';
+    var url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + 'q=' + encodeURIComponent(query) + '&limit=100';
     fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
       .then(function (r) { return r.json(); })
       .then(function (data) {
@@ -266,7 +277,7 @@
           showStatus((data && data.error) || 'No se pudo consultar Gestión Humana.', true);
           return;
         }
-        render(data.items || []);
+        render(data.items || [], data.meta || {});
       })
       .catch(function () { showStatus('Error de red al consultar Gestión Humana.', true); });
   }

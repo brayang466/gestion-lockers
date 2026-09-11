@@ -141,7 +141,9 @@ def buscar_empleados(
             "a Gestión Humana (aún)."
         )
 
-    limit = max(1, min(int(limit or 25), 50))
+    # Tope alto: el listado de registro personal necesita ver todos los
+    # activos del área y luego restar los ya registrados en el aplicativo.
+    limit = max(1, min(int(limit or 25), 500))
     q = (q or "").strip()
     q_digits = re.sub(r"\D+", "", q)
 
