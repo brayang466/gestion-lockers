@@ -106,7 +106,7 @@ def _base_dotaciones_scope_filter(current_area):
 
 # Cierre por inactividad (segundos). Valor prudente: 25 min.
 IDLE_TIMEOUT_SECONDS = 25 * 60
-# Área DESPOSTE en mantenimiento: solo superadmin puede entrar.
+# Área DESPOSTE en mantenimiento: no se entra; solo se muestra el aviso.
 DESPOSTE_EN_MANTENIMIENTO = True
 USABILIDAD_DEBOUNCE_SECONDS = 4
 
@@ -116,8 +116,8 @@ def _is_superadmin():
 
 
 def _desposte_bloqueado_para_usuario():
-    """True si DESPOSTE está en mantenimiento y el usuario no es superadmin."""
-    return DESPOSTE_EN_MANTENIMIENTO and not _is_superadmin()
+    """True si DESPOSTE está en mantenimiento (bloqueada para todos)."""
+    return bool(DESPOSTE_EN_MANTENIMIENTO)
 
 
 def _usabilidad_skip_path(path):
@@ -1280,7 +1280,7 @@ def areas():
         "areas.html",
         areas_para_elegir=areas_para_elegir,
         sin_area=sin_area,
-        desposte_en_mantenimiento=_desposte_bloqueado_para_usuario(),
+        desposte_en_mantenimiento=DESPOSTE_EN_MANTENIMIENTO,
     )
 
 
@@ -1289,7 +1289,7 @@ def areas():
 def entrar_area(nombre):
     """Fija el área actual y redirige al dashboard. <path:nombre> permite nombres con «/» (p. ej. EXTERNOS/OTRAS AREAS)."""
     nombre = (nombre or "").strip().upper()
-    if nombre == "DESPOSTE" and _desposte_bloqueado_para_usuario():
+    if nombre == "DESPOSTE" and DESPOSTE_EN_MANTENIMIENTO:
         flash(
             "El área DESPOSTE se encuentra en mantenimiento. Estará disponible luego.",
             "error",
@@ -1332,52 +1332,75 @@ def api_verificar_codigos():
 @login_required
 @_require_current_area
 def api_empleados_gh():
-    """Autollenado: empleados de gestio_humana filtrados por área (mapeada), más recientes primero.
-    Excluye cédulas ya registradas en el aplicativo (personal pendiente o con asignación).
-
-    La cantidad del listado depende de:
-    - activos en GH del área, y
-    - cuántos ya existen en registro_asignaciones local.
-    Por eso local y servidor pueden diferir si no comparten la misma BD de asignaciones/GH.
+    """Autollenado GH por área: solo ACTIVO y que NO estén ya en registro_asignaciones.
+    No aplica en DESPOSTE (área en mantenimiento / sin mapeo GH operativo).
     """
     from flask import jsonify
     import re as _re
     from app.utils.gestion_humana import area_gh_para_lockers, buscar_empleados
 
     current_area = (session.get("current_area") or "").strip()
+    if (current_area or "").strip().upper() == "DESPOSTE" or DESPOSTE_EN_MANTENIMIENTO and (
+        current_area or ""
+    ).strip().upper() == "DESPOSTE":
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Gestión Humana no aplica mientras DESPOSTE esté en mantenimiento.",
+                "area_lockers": current_area,
+                "area_gh": None,
+                "items": [],
+                "meta": {
+                    "total_gh_activos": 0,
+                    "ya_registrados_en_app": 0,
+                    "disponibles_mostrados": 0,
+                    "nota": "DESPOSTE en mantenimiento.",
+                },
+            }
+        )
+
     q = (request.args.get("q") or "").strip()
     try:
         limit = int(request.args.get("limit") or 40)
     except (TypeError, ValueError):
         limit = 40
     limit = max(1, min(limit, 100))
-    # Traer el universo del área (hasta 500) y filtrar ya registrados,
-    # para no perder libres “viejos” por un LIMIT corto de GH.
+
     items, err = buscar_empleados(current_area, q=q, limit=500, solo_activos=True)
     total_gh = len(items or [])
     ya_reg_n = 0
+    # Cédulas ya en asignaciones (pendientes o con códigos): no deben aparecer.
+    ya_reg = set()
+    for (ident,) in RegistroAsignaciones.query.with_entities(
+        RegistroAsignaciones.identificacion
+    ).all():
+        d = _re.sub(r"\D+", "", (ident or "").strip())
+        if d:
+            ya_reg.add(d)
+
+    filtrados = []
     if items:
-        ya_reg = set()
-        for (ident,) in (
-            RegistroAsignaciones.query.with_entities(RegistroAsignaciones.identificacion).all()
-        ):
-            d = _re.sub(r"\D+", "", (ident or "").strip())
-            if d:
-                ya_reg.add(d)
-        filtrados = []
         for it in items:
             doc = _re.sub(
                 r"\D+",
                 "",
-                str(it.get("documento") or it.get("identificacion") or it.get("id_cedula") or "").strip(),
+                str(
+                    it.get("documento")
+                    or it.get("identificacion")
+                    or it.get("id_cedula")
+                    or it.get("id_cedula")
+                    or ""
+                ).strip(),
             )
-            if doc and doc in ya_reg:
+            if not doc:
+                continue
+            if doc in ya_reg:
                 ya_reg_n += 1
                 continue
             filtrados.append(it)
             if len(filtrados) >= limit:
                 break
-        items = filtrados
+    items = filtrados
     return jsonify(
         {
             "ok": err is None,
@@ -1390,9 +1413,8 @@ def api_empleados_gh():
                 "ya_registrados_en_app": ya_reg_n,
                 "disponibles_mostrados": len(items or []),
                 "nota": (
-                    "Solo se listan activos de GH que aún no están en el aplicativo. "
-                    "Si local y servidor no coinciden, sincroniza registro_asignaciones "
-                    "y/o la BD gestio_humana."
+                    "Solo activos de GH que aún no están en registro_asignaciones. "
+                    "Si ya figura en asignaciones, no se muestra aquí."
                 ),
             },
         }
@@ -2643,7 +2665,11 @@ def modulo(modulo_id):
         except Exception:
             pass
 
-        if area_gh_para_lockers(current_area):
+        # DESPOSTE queda fuera del sync GH mientras esté en mantenimiento.
+        if (
+            (current_area or "").strip().upper() != "DESPOSTE"
+            and area_gh_para_lockers(current_area)
+        ):
             try:
                 sync = sincronizar_retirados_area(current_area)
                 deduplicar_historial_retiros(None)
