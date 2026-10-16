@@ -2,7 +2,9 @@
 {% from 'includes/module_icons.html' import module_icon %}
 {% block title %}Dashboard - LockerBeef{% endblock %}
 {% block content %}
-<div class="dashboard-layout ent" id="dashboardEnt" data-show-pp="{{ '1' if show_personal_presupuestado|default(true) else '0' }}">
+<div class="dashboard-layout ent" id="dashboardEnt"
+     data-show-pp="{{ '1' if show_personal_presupuestado|default(false) else '0' }}"
+     data-show-charts="{{ '1' if show_dashboard_charts|default(true) else '0' }}">
     <aside class="dashboard-sidebar" aria-label="Navegación">
         <div class="sidebar-brand">LockerBeef</div>
         <nav class="sidebar-section">
@@ -109,14 +111,38 @@
             </section>
             <div id="reminderToast" class="reminder-toast" hidden role="status" aria-live="polite"></div>
 
-            {% if show_personal_presupuestado|default(true) %}
-            <section class="widget-chart dashboard-chart-panel" aria-label="Personal presupuestado">
-                <div class="reminders-widget-header">
-                    <h3>Personal presupuestado</h3>
-                    <div class="hint" style="margin-left:auto">Área: {{ current_area or '—' }}</div>
+            {% if show_dashboard_charts|default(true) %}
+            <section class="widget-chart dashboard-chart-panel dash-analytics" aria-label="Analítica del área">
+                <div class="reminders-widget-header dash-analytics-header">
+                    <div>
+                        <h3>Analítica del área</h3>
+                        <p class="dash-analytics-sub">Solo datos de <strong>{{ current_area or '—' }}</strong> · últimos 7 días</p>
+                    </div>
                 </div>
-                <div style="position:relative; height:240px;">
-                    <canvas id="ppChart" aria-label="Gráfica de personal presupuestado"></canvas>
+                <div class="dash-analytics-grid{% if not show_personal_presupuestado|default(false) %} dash-analytics-grid--solo{% endif %}">
+                    <div class="dash-analytics-card dash-analytics-activity">
+                        <div class="dash-analytics-card-title">Altas / movimientos</div>
+                        <div class="dash-chart-wrap dash-chart-wrap--line">
+                            <canvas id="activityChart" aria-label="Actividad del área últimos 7 días"></canvas>
+                        </div>
+                    </div>
+                    {% if show_personal_presupuestado|default(false) %}
+                    <div class="dash-analytics-card dash-analytics-pp">
+                        <div class="dash-analytics-card-title">Personal presupuestado</div>
+                        <div class="dash-chart-wrap dash-chart-wrap--donut">
+                            <canvas id="ppChart" aria-label="Personal presupuestado del área"></canvas>
+                            <div class="dash-donut-center" id="ppChartCenter" aria-hidden="true">
+                                <span class="dash-donut-value" id="ppChartTotal">0</span>
+                                <span class="dash-donut-label">total</span>
+                            </div>
+                        </div>
+                        <ul class="dash-pp-legend" id="ppLegend">
+                            <li><span class="swatch swatch-ok"></span> Aprobados <strong data-pp="aprobados">0</strong></li>
+                            <li><span class="swatch swatch-go"></span> Contratados <strong data-pp="contratados">0</strong></li>
+                            <li><span class="swatch swatch-warn"></span> Por contratar <strong data-pp="por_contratar">0</strong></li>
+                        </ul>
+                    </div>
+                    {% endif %}
                 </div>
             </section>
             {% endif %}
@@ -132,37 +158,129 @@
     var isSmall = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
     var POLL_INTERVAL_MS = isSmall ? 30000 : 15000;
     var ppChart = null;
+    var activityChart = null;
     var inFlight = false;
+    var initialLabels = {{ chart_labels|default([])|tojson }};
+    var initialActivity = {{ chart_data|default([])|tojson }};
+
+    function gradientFill(ctx, chartArea, c1, c2) {
+        if (!chartArea) return c1;
+        var g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+        g.addColorStop(0, c1);
+        g.addColorStop(1, c2);
+        return g;
+    }
+
+    function initActivityChart() {
+        var canvas = document.getElementById('activityChart');
+        if (!canvas || typeof Chart === 'undefined') return;
+        var ctx = canvas.getContext('2d');
+        activityChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: initialLabels || [],
+                datasets: [{
+                    label: 'Registros',
+                    data: initialActivity || [],
+                    borderColor: '#f87171',
+                    backgroundColor: function(context) {
+                        var chart = context.chart;
+                        var {ctx: c, chartArea} = chart;
+                        return gradientFill(c, chartArea, 'rgba(248,113,113,0.35)', 'rgba(248,113,113,0.02)');
+                    },
+                    borderWidth: 2.5,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: '#fecaca',
+                    pointBorderColor: '#ef4444',
+                    pointBorderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.92)',
+                        titleColor: '#f8fafc',
+                        bodyColor: '#e2e8f0',
+                        padding: 10,
+                        cornerRadius: 10,
+                        displayColors: false
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#94a3b8', font: { size: 11 } }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        ticks: { precision: 0, color: '#94a3b8' },
+                        grid: { color: 'rgba(148,163,184,0.15)' },
+                        border: { display: false }
+                    }
+                },
+                animation: { duration: 700, easing: 'easeOutQuart' }
+            }
+        });
+    }
 
     function initPPChart() {
         var canvas = document.getElementById('ppChart');
         if (!canvas || typeof Chart === 'undefined') return;
         var ctx = canvas.getContext('2d');
         ppChart = new Chart(ctx, {
-            type: 'bar',
+            type: 'doughnut',
             data: {
                 labels: ['Aprobados', 'Contratados', 'Por contratar'],
                 datasets: [{
-                    label: 'Personal',
                     data: [0, 0, 0],
-                    backgroundColor: ['rgba(59,130,246,0.55)', 'rgba(16,185,129,0.55)', 'rgba(239,68,68,0.55)'],
-                    borderColor: ['rgba(59,130,246,0.9)', 'rgba(16,185,129,0.9)', 'rgba(239,68,68,0.9)'],
-                    borderWidth: 1
+                    backgroundColor: [
+                        'rgba(56,189,248,0.85)',
+                        'rgba(52,211,153,0.85)',
+                        'rgba(251,146,60,0.9)'
+                    ],
+                    borderColor: 'rgba(15,23,42,0.65)',
+                    borderWidth: 3,
+                    hoverOffset: 8
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                animation: false,
+                cutout: '72%',
                 plugins: {
                     legend: { display: false },
-                    tooltip: { enabled: true }
+                    tooltip: {
+                        backgroundColor: 'rgba(15,23,42,0.92)',
+                        padding: 10,
+                        cornerRadius: 10
+                    }
                 },
-                scales: {
-                    y: { beginAtZero: true, ticks: { precision: 0 } }
-                }
+                animation: { animateRotate: true, duration: 800 }
             }
         });
+    }
+
+    function updatePPLegend(pp) {
+        var root = document.getElementById('ppLegend');
+        if (!root) return;
+        ['aprobados', 'contratados', 'por_contratar'].forEach(function(k) {
+            var el = root.querySelector('[data-pp="' + k + '"]');
+            if (el) el.textContent = pp[k] || 0;
+        });
+        var totalEl = document.getElementById('ppChartTotal');
+        if (totalEl) {
+            var a = Number(pp.aprobados || 0);
+            var c = Number(pp.contratados || 0);
+            var p = Number(pp.por_contratar || 0);
+            totalEl.textContent = String(a + c + Math.max(p, 0));
+        }
     }
 
     function updateDashboardFromJson(stats) {
@@ -178,15 +296,22 @@
             });
         }
         var root = document.getElementById('dashboardEnt');
+        var showCharts = root && root.getAttribute('data-show-charts') !== '0';
         var showPp = root && root.getAttribute('data-show-pp') !== '0';
+        if (showCharts && activityChart && stats.chart_labels && stats.chart_data) {
+            activityChart.data.labels = stats.chart_labels;
+            activityChart.data.datasets[0].data = stats.chart_data;
+            activityChart.update('none');
+        }
         if (showPp && ppChart && stats.personal_presupuestado) {
             var pp = stats.personal_presupuestado || {};
             ppChart.data.datasets[0].data = [
                 pp.aprobados || 0,
                 pp.contratados || 0,
-                pp.por_contratar || 0
+                Math.max(pp.por_contratar || 0, 0)
             ];
             ppChart.update();
+            updatePPLegend(pp);
         }
     }
 
@@ -201,7 +326,13 @@
     }
 
     function bootstrap() {
-        initPPChart();
+        var root = document.getElementById('dashboardEnt');
+        var showCharts = root && root.getAttribute('data-show-charts') !== '0';
+        var showPp = root && root.getAttribute('data-show-pp') !== '0';
+        if (showCharts) {
+            initActivityChart();
+            if (showPp) initPPChart();
+        }
         fetchStats();
         if (statsUrl && document.visibilityState !== 'hidden') {
             var pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
@@ -216,25 +347,23 @@
         }
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bootstrap);
-    } else {
-        bootstrap();
+    function whenChartReady(cb) {
+        if (typeof Chart !== 'undefined') { cb(); return; }
+        var n = 0;
+        var t = setInterval(function() {
+            n += 1;
+            if (typeof Chart !== 'undefined' || n > 40) {
+                clearInterval(t);
+                if (typeof Chart !== 'undefined') cb();
+            }
+        }, 50);
     }
 
-    // (el bloque viejo de polling se reemplazó por bootstrap())
-    /*
-        var pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'visible') {
-                fetchStats();
-                pollTimer = setInterval(fetchStats, POLL_INTERVAL_MS);
-            } else {
-                clearInterval(pollTimer);
-            }
-        });
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() { whenChartReady(bootstrap); });
+    } else {
+        whenChartReady(bootstrap);
     }
-    */
 
     function applyGreeting() {
         var el = document.getElementById('dashboardGreeting');

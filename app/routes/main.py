@@ -63,9 +63,21 @@ _INTERNAS_PLANTA_UPPER = frozenset(
     }
 )
 
-# Área nueva: agrupa SST, TIC, ADM, EXT, PYP, GG, SEG, ASUR, MTTO. Sin historial retiros/cambios.
+# Área nueva: agrupa SST, TIC, ADM, EXT, PYP, GG, SEG, ASUR, MTTO.
+# Sin historial retiros/cambios ni personal presupuestado.
 _ADMINISTRATIVA_UPPER = "ADMINISTRATIVA"
-_MODULOS_OCULTOS_ADMINISTRATIVA = frozenset({"historial-retiros", "historial-cambios"})
+_MODULOS_OCULTOS_ADMINISTRATIVA = frozenset(
+    {"historial-retiros", "historial-cambios", "personal-presupuestado"}
+)
+
+# Personal presupuestado en Excel/BD suele usar códigos cortos (LN, LOG, CAL).
+_AREA_PP_ALIASES = {
+    "BENEFICIO": ("BENEFICIO", "LN"),
+    "LOGISTICA": ("LOGISTICA", "LOG"),
+    "CALIDAD": ("CALIDAD", "CAL"),
+    "PCC": ("PCC",),
+    "LYD": ("LYD",),
+}
 # Etiquetas que solo deben verse en esta sesión (no en ASUR/BENEFICIO/… ni en vista general dotaciones ≠ DESPOSTE).
 _OTRAS_ETIQUETAS_SOLO_SESION_EXTERNOS = frozenset(
     (
@@ -1710,12 +1722,24 @@ def _dashboard_stats(current_area):
             q_dot_disp = q_dot_disp.filter(~BaseDotaciones.codigo.in_(assigned_codes_sq))
     dotaciones_disponibles = q_dot_disp.count()
 
-    # Personal presupuestado (por área; DESPOSTE excluido)
+    # Personal presupuestado: solo del área de sesión (códigos cortos LN/LOG/CAL ↔ nombre largo).
     personal_presupuestado = {"aprobados": 0, "contratados": 0, "por_contratar": 0}
     ca_u = (current_area or "").strip().upper()
-    if ca_u and not _is_desposte_context(current_area) and not _is_externos_area(current_area):
+    show_pp = bool(
+        ca_u
+        and ca_u != _ADMINISTRATIVA_UPPER
+        and not _is_desposte_context(current_area)
+        and not _is_externos_area(current_area)
+    )
+    if show_pp:
+        aliases = _AREA_PP_ALIASES.get(ca_u, (ca_u,))
         pp = (
-            PersonalPresupuestado.query.filter(db.func.upper(db.func.trim(PersonalPresupuestado.area)) == ca_u)
+            PersonalPresupuestado.query.filter(
+                db.func.upper(db.func.trim(PersonalPresupuestado.area)).in_(
+                    [a.upper() for a in aliases]
+                )
+            )
+            .order_by(PersonalPresupuestado.id.asc())
             .first()
         )
         if pp:
@@ -1798,7 +1822,8 @@ def _dashboard_stats(current_area):
         "total_asignaciones": total_asignaciones,
         "total_retiros": total_retiros,
         "personal_presupuestado": personal_presupuestado,
-        "show_personal_presupuestado": not _is_externos_area(current_area),
+        "show_personal_presupuestado": show_pp,
+        "show_dashboard_charts": ca_u != _ADMINISTRATIVA_UPPER,
         "chart_labels": chart_labels,
         "chart_data": chart_data,
     }
@@ -1855,7 +1880,8 @@ def dashboard():
         modulos_sidebar = {
             k: v for k, v in modulos_sidebar.items() if k not in _MODULOS_OCULTOS_ADMINISTRATIVA
         }
-    show_pp = not _is_externos_area(current_area)
+    show_pp = bool(stats.get("show_personal_presupuestado"))
+    show_charts = bool(stats.get("show_dashboard_charts", True))
     return render_template(
         "dashboard.html",
         total_lockers=total_lockers,
@@ -1874,6 +1900,7 @@ def dashboard():
         unique_categories=unique_categories,
         current_area=current_area,
         show_personal_presupuestado=show_pp,
+        show_dashboard_charts=show_charts,
     )
 
 
@@ -2366,7 +2393,7 @@ def modulo(modulo_id):
         and (session.get("current_area") or "").strip().upper() == _ADMINISTRATIVA_UPPER
     ):
         flash(
-            "Historial de Retiros e Historial de Cambios no están disponibles en el área ADMINISTRATIVA.",
+            "Ese módulo no está disponible en el área ADMINISTRATIVA.",
             "error",
         )
         return redirect(url_for("main.dashboard"))
@@ -3204,6 +3231,9 @@ def modulo(modulo_id):
     _mod_nav = dict(MODULOS_CONFIG)
     if _is_externos_area(current_area):
         _mod_nav.pop("personal-presupuestado", None)
+    if (current_area or "").strip().upper() == _ADMINISTRATIVA_UPPER:
+        for mid in _MODULOS_OCULTOS_ADMINISTRATIVA:
+            _mod_nav.pop(mid, None)
     return render_template(
         "modulo.html",
         modulo_id=modulo_id,
