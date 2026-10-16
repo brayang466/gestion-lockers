@@ -42,6 +42,23 @@ def parse_fecha(t):
     return None
 
 
+# Códigos del Excel que se agrupan en el área de trabajo ADMINISTRATIVA.
+_AREAS_ADMINISTRATIVA = frozenset(
+    {
+        "SST",
+        "TIC",
+        "ADM",
+        "EXT",
+        "ADM EXT",
+        "PYP",
+        "GG",
+        "SEG",
+        "ASUR",
+        "MTTO",
+    }
+)
+
+
 def _normalize_area_registro_asignaciones_csv(area_raw):
     """CSV general: códigos cortos al nombre usado en sesión / area_trabajo (como scripts/actualizar_areas)."""
     if area_raw is None:
@@ -56,11 +73,13 @@ def _normalize_area_registro_asignaciones_csv(area_raw):
         return "LOGISTICA"
     if u == "CAL":
         return "CALIDAD"
+    if u in _AREAS_ADMINISTRATIVA:
+        return "ADMINISTRATIVA"
     return s
 
 
 def _normalize_area_general(area_raw):
-    """Normaliza códigos de área al nombre de sesión (LN→BENEFICIO, LOG→LOGISTICA, CAL→CALIDAD)."""
+    """Normaliza códigos de área al nombre de sesión (LN→BENEFICIO, LOG→LOGISTICA, CAL→CALIDAD, admin→ADMINISTRATIVA)."""
     if area_raw is None:
         return ""
     s = str(area_raw).strip()
@@ -73,6 +92,8 @@ def _normalize_area_general(area_raw):
         return "LOGISTICA"
     if u == "CAL":
         return "CALIDAD"
+    if u in _AREAS_ADMINISTRATIVA:
+        return "ADMINISTRATIVA"
     return u
 
 
@@ -374,21 +395,29 @@ def import_locker_disponibles(r, rep, app):
             if not codigo:
                 skip += 1
                 continue
-            area_u = (data.get("area") or "").strip().upper()
-            if area_u == "DESPOSTE":
+            area_norm = _normalize_area_general(data.get("area"))
+            if area_norm == "DESPOSTE":
                 # Este CSV es para áreas generales; Desposte va aparte
                 skip += 1
                 continue
             data["codigo"] = codigo
-            data["area"] = (data.get("area") or "").strip()
+            data["area"] = area_norm
             data["subarea"] = (data.get("subarea") or "").strip() if "subarea" in data else ""
             data["area_lockers"] = (data.get("area_lockers") or "").strip()
-            if "estado" in data and data.get("estado") is not None:
-                data["estado"] = (data.get("estado") or "").strip() or "disponible"
+            data["estado"] = ((data.get("estado") or "").strip() or "disponible")
             if "observaciones" in data and data.get("observaciones") is not None:
                 data["observaciones"] = (data.get("observaciones") or "").strip()
             try:
-                db.session.add(LockerDisponibles(**data))
+                db.session.add(
+                    LockerDisponibles(
+                        codigo=data["codigo"],
+                        area=data["area"],
+                        subarea=data.get("subarea") or "",
+                        area_lockers=data.get("area_lockers") or "",
+                        estado=data["estado"],
+                        observaciones=data.get("observaciones") or None,
+                    )
+                )
                 imp += 1
             except Exception:
                 skip += 1
@@ -623,37 +652,40 @@ def import_seca_botas_disponibles(r, rep, app):
             if i is not None:
                 idx[attr] = (i, opt[0] if opt else None)
         imp, skip = 0, 0
-        def split_codigo_y_area(raw: str) -> tuple[str, str]:
+        def area_desde_codigo(raw: str) -> str:
+            """Conserva el código completo (ej. '1 PCC') y deduce el área del sufijo."""
             t = (raw or "").strip()
             if not t:
-                return "", ""
+                return "SIN ASIGNAR"
             parts = [p for p in t.split() if p]
             if len(parts) < 2:
-                return t, ""
-            code = parts[0].strip()
-            area = parts[1].strip().upper()
-            mapa = {
-                "LN": "BENEFICIO",
-                "LOG": "LOGISTICA",
-            }
-            return code, mapa.get(area, area)
+                return "SIN ASIGNAR"
+            suf = parts[-1].strip().upper()
+            # MUJ = vestidor mujeres (no es área de trabajo)
+            if suf == "MUJ":
+                return "SIN ASIGNAR"
+            return _normalize_area_general(suf) or "SIN ASIGNAR"
 
         for row in r[1:]:
             data = {}
             for attr, (i, opt) in idx.items():
                 v = safe(row, i)
                 data[attr] = v
-            raw_codigo = data.get("codigo", "")
-            codigo, area_from_codigo = split_codigo_y_area(raw_codigo)
-            if not codigo.strip():
+            raw_codigo = (data.get("codigo") or "").strip()
+            if not raw_codigo:
                 skip += 1
                 continue
             estado_norm = norm_estado(data.get("estado", ""))
-            data["codigo"] = codigo.strip()
-            data["estado"] = estado_norm
-            data["area"] = area_from_codigo or "SIN ASIGNAR"
+            area_from_codigo = area_desde_codigo(raw_codigo)
+            area_explicit = _normalize_area_general(data.get("area") or "")
+            obj = SecaBotasDisponibles(
+                codigo=raw_codigo[:50],
+                area_locker=(data.get("area_locker") or "").strip()[:100],
+                area=(area_explicit or area_from_codigo or "SIN ASIGNAR")[:100],
+                estado=estado_norm,
+            )
             try:
-                db.session.add(SecaBotasDisponibles(**data))
+                db.session.add(obj)
                 imp += 1
             except Exception:
                 skip += 1

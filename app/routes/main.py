@@ -13,7 +13,7 @@ from app.models import (
     RegistroPersonal, RegistroAsignaciones, DotacionesDisponibles,
     LockerDisponibles, HistorialRetiros, PersonalPresupuestado,
     IngresoLockers, IngresoDotacion, AreaTrabajo, SecaBotasDisponibles,
-    UsabilidadLog,
+    UsabilidadLog, HistorialCambios,
 )
 
 bp = Blueprint("main", __name__)
@@ -53,8 +53,19 @@ _INTERNAS_PLANTA_UPPER = frozenset(
         "MTTO",
         "PCC",
         "PROCESO",
+        "ADMINISTRATIVA",
+        "SST",
+        "TIC",
+        "ADM",
+        "PYP",
+        "GG",
+        "SEG",
     }
 )
+
+# Área nueva: agrupa SST, TIC, ADM, EXT, PYP, GG, SEG, ASUR, MTTO. Sin historial retiros/cambios.
+_ADMINISTRATIVA_UPPER = "ADMINISTRATIVA"
+_MODULOS_OCULTOS_ADMINISTRATIVA = frozenset({"historial-retiros", "historial-cambios"})
 # Etiquetas que solo deben verse en esta sesión (no en ASUR/BENEFICIO/… ni en vista general dotaciones ≠ DESPOSTE).
 _OTRAS_ETIQUETAS_SOLO_SESION_EXTERNOS = frozenset(
     (
@@ -592,6 +603,67 @@ def _liberar_locker(codigo, area=None):
         reg_base.estado = "disponible"
 
 
+def _liberar_seca_botas(codigo):
+    """Vuelve a DISPONIBLE la seca botas con ese código."""
+    if not (codigo or "").strip():
+        return
+    cod = (codigo or "").strip()
+    for reg in SecaBotasDisponibles.query.filter_by(codigo=cod).all():
+        reg.estado = "DISPONIBLE"
+
+
+def _snapshot_registro(obj, max_len=800):
+    """Resumen corto de un registro para auditoría."""
+    if obj is None:
+        return ""
+    partes = []
+    for attr in (
+        "identificacion",
+        "operario",
+        "codigo",
+        "codigo_dotacion",
+        "codigo_lockets",
+        "codigo_seca_botas",
+        "area",
+        "estado",
+        "nombre",
+    ):
+        if hasattr(obj, attr):
+            val = getattr(obj, attr, None)
+            if val is not None and str(val).strip():
+                partes.append(f"{attr}={str(val).strip()}")
+    if not partes:
+        partes.append(f"id={getattr(obj, 'id', '')}")
+    return "; ".join(partes)[:max_len]
+
+
+def _registrar_cambio(modulo_id, accion, obj=None, detalle="", registro_id=None):
+    """Guarda una entrada en historial_cambios (no falla la operación principal)."""
+    try:
+        rid = registro_id
+        if rid is None and obj is not None:
+            rid = getattr(obj, "id", None)
+        resumen = f"{accion} en {modulo_id}"
+        if obj is not None:
+            snap = _snapshot_registro(obj)
+            if snap:
+                resumen = f"{accion}: {snap}"
+        db.session.add(
+            HistorialCambios(
+                modulo=(modulo_id or "")[:80],
+                accion=(accion or "")[:20],
+                registro_id=rid,
+                resumen=(resumen or "")[:255],
+                detalle=(detalle or _snapshot_registro(obj, 4000) or "")[:4000],
+                usuario_id=session.get("user_id"),
+                usuario_nombre=(session.get("user_nombre") or session.get("user_email") or "")[:120],
+                area=(session.get("current_area") or "")[:100],
+            )
+        )
+    except Exception:
+        pass
+
+
 # Paginación: máximo registros por página en módulos (evita cargar miles de filas)
 PER_PAGE = 50
 
@@ -865,6 +937,25 @@ MODULOS_CONFIG = {
         ],
         "date_fields": ["fecha_retiro"],
     },
+    "historial-cambios": {
+        "model": HistorialCambios,
+        "titulo": "Historial de Cambios",
+        "icon": "clock",
+        "area_key": None,
+        "no_crear": True,
+        "solo_lectura": True,
+        "columnas": [
+            {"key": "creado_en", "label": "Fecha"},
+            {"key": "accion", "label": "Acción"},
+            {"key": "modulo", "label": "Módulo"},
+            {"key": "resumen", "label": "Resumen"},
+            {"key": "usuario_nombre", "label": "Usuario"},
+            {"key": "area", "label": "Área"},
+            {"key": "registro_id", "label": "ID registro"},
+        ],
+        "form_fields": [],
+        "date_fields": ["creado_en"],
+    },
     "ingreso-lockers": {
         "model": IngresoLockers,
         "titulo": "Ingreso de Lockers",
@@ -909,6 +1000,7 @@ MODULOS_ORDER = [
     "locker-disponibles",
     "seca-botas-disponibles",
     "historial-retiros",
+    "historial-cambios",
     "ingreso-lockers",
     "ingreso-dotacion",
     "base-lockers",
@@ -1332,17 +1424,18 @@ def api_verificar_codigos():
 @login_required
 @_require_current_area
 def api_empleados_gh():
-    """Autollenado GH por área: solo ACTIVO y que NO estén ya en registro_asignaciones.
-    No aplica en DESPOSTE (área en mantenimiento / sin mapeo GH operativo).
+    """Autollenado GH por área:
+    - Solo ACTIVO
+    - Solo ingresos del año en curso (personal nuevo)
+    - Si ya está en registro_asignaciones → nunca aparece (sin duplicados)
+    No aplica en DESPOSTE.
     """
     from flask import jsonify
     import re as _re
-    from app.utils.gestion_humana import area_gh_para_lockers, buscar_empleados
+    from app.utils.gestion_humana import area_gh_para_lockers, buscar_empleados, _parse_fecha_gh
 
     current_area = (session.get("current_area") or "").strip()
-    if (current_area or "").strip().upper() == "DESPOSTE" or DESPOSTE_EN_MANTENIMIENTO and (
-        current_area or ""
-    ).strip().upper() == "DESPOSTE":
+    if (current_area or "").strip().upper() == "DESPOSTE":
         return jsonify(
             {
                 "ok": False,
@@ -1354,6 +1447,8 @@ def api_empleados_gh():
                     "total_gh_activos": 0,
                     "ya_registrados_en_app": 0,
                     "disponibles_mostrados": 0,
+                    "omitidos_anio_anterior": 0,
+                    "anio": datetime.now().year,
                     "nota": "DESPOSTE en mantenimiento.",
                 },
             }
@@ -1365,11 +1460,13 @@ def api_empleados_gh():
     except (TypeError, ValueError):
         limit = 40
     limit = max(1, min(limit, 100))
+    anio_actual = datetime.now().year
 
     items, err = buscar_empleados(current_area, q=q, limit=500, solo_activos=True)
     total_gh = len(items or [])
     ya_reg_n = 0
-    # Cédulas ya en asignaciones (pendientes o con códigos): no deben aparecer.
+    omitidos_anio = 0
+
     ya_reg = set()
     for (ident,) in RegistroAsignaciones.query.with_entities(
         RegistroAsignaciones.identificacion
@@ -1377,26 +1474,35 @@ def api_empleados_gh():
         d = _re.sub(r"\D+", "", (ident or "").strip())
         if d:
             ya_reg.add(d)
+            # Variante sin ceros a la izquierda (evita falsos "libres")
+            d2 = d.lstrip("0") or d
+            ya_reg.add(d2)
 
     filtrados = []
     if items:
         for it in items:
-            doc = _re.sub(
-                r"\D+",
-                "",
-                str(
-                    it.get("documento")
-                    or it.get("identificacion")
-                    or it.get("id_cedula")
-                    or it.get("id_cedula")
-                    or ""
-                ).strip(),
-            )
+            raw_doc = str(
+                it.get("documento")
+                or it.get("identificacion")
+                or it.get("id_cedula")
+                or ""
+            ).strip()
+            doc = _re.sub(r"\D+", "", raw_doc)
             if not doc:
                 continue
-            if doc in ya_reg:
+            doc_alt = doc.lstrip("0") or doc
+            # Sin duplicados: si ya está en registro_asignaciones, no aparece.
+            if doc in ya_reg or doc_alt in ya_reg:
                 ya_reg_n += 1
                 continue
+
+            # Solo personal nuevo del año en curso.
+            fecha_ing = (it.get("fecha_ingreso") or "").strip()
+            dt_ing = _parse_fecha_gh(fecha_ing) if fecha_ing else None
+            if dt_ing is None or dt_ing.year != anio_actual:
+                omitidos_anio += 1
+                continue
+
             filtrados.append(it)
             if len(filtrados) >= limit:
                 break
@@ -1412,9 +1518,11 @@ def api_empleados_gh():
                 "total_gh_activos": total_gh,
                 "ya_registrados_en_app": ya_reg_n,
                 "disponibles_mostrados": len(items or []),
+                "omitidos_anio_anterior": omitidos_anio,
+                "anio": anio_actual,
                 "nota": (
-                    "Solo activos de GH que aún no están en registro_asignaciones. "
-                    "Si ya figura en asignaciones, no se muestra aquí."
+                    f"Solo ACTIVO de GH con ingreso {anio_actual} que aún no están "
+                    "en registro_asignaciones. Sin duplicados."
                 ),
             },
         }
@@ -1425,13 +1533,15 @@ def api_empleados_gh():
 @login_required
 @_require_current_area
 def api_empleado_gh_detalle(documento):
-    """Detalle de un empleado de Gestión Humana por cédula (dentro del área actual mapeada).
-    Solo activos nuevos (no registrados aún en asignaciones)."""
+    """Detalle GH por cédula: solo ACTIVO del año en curso y no registrado en asignaciones."""
     from flask import jsonify
     import re as _re
-    from app.utils.gestion_humana import obtener_empleado_por_cedula
+    from app.utils.gestion_humana import obtener_empleado_por_cedula, _parse_fecha_gh
 
     current_area = (session.get("current_area") or "").strip()
+    if (current_area or "").strip().upper() == "DESPOSTE":
+        return jsonify({"ok": False, "error": "DESPOSTE en mantenimiento.", "item": None})
+
     item, err = obtener_empleado_por_cedula(documento, current_area=current_area)
     if item is None:
         return jsonify({"ok": False, "error": err, "item": None})
@@ -1446,12 +1556,26 @@ def api_empleado_gh_detalle(documento):
             }
         )
 
+    anio_actual = datetime.now().year
+    dt_ing = _parse_fecha_gh((item.get("fecha_ingreso") or "").strip())
+    if dt_ing is None or dt_ing.year != anio_actual:
+        return jsonify(
+            {
+                "ok": False,
+                "error": f"Solo se admiten ingresos del año {anio_actual} (personal nuevo).",
+                "item": None,
+            }
+        )
+
     doc = _re.sub(r"\D+", "", str(item.get("documento") or documento or "").strip())
+    doc_alt = (doc.lstrip("0") or doc) if doc else ""
     if doc:
         for (ident,) in RegistroAsignaciones.query.with_entities(
             RegistroAsignaciones.identificacion
         ).all():
-            if _re.sub(r"\D+", "", (ident or "").strip()) == doc:
+            d = _re.sub(r"\D+", "", (ident or "").strip())
+            d2 = d.lstrip("0") or d
+            if d == doc or d2 == doc or d == doc_alt or d2 == doc_alt:
                 return jsonify(
                     {
                         "ok": False,
@@ -1719,12 +1843,18 @@ def dashboard():
         "personal-presupuestado": "Personal",
         "registro-asignaciones": "Operaciones",
         "historial-retiros": "Operaciones",
+        "historial-cambios": "Operaciones",
+        "seca-botas-disponibles": "Lockers",
     }
     unique_categories = sorted(set(MODULE_CATEGORIES.values()))
     # Listado del sidebar: sin Ingreso de Lockers ni Ingreso de Dotación (acceso por botones del encabezado)
     modulos_sidebar = {k: v for k, v in MODULOS_CONFIG.items() if k not in ("ingreso-lockers", "ingreso-dotacion")}
     if _is_externos_area(current_area):
         modulos_sidebar = {k: v for k, v in modulos_sidebar.items() if k != "personal-presupuestado"}
+    if (current_area or "").strip().upper() == _ADMINISTRATIVA_UPPER:
+        modulos_sidebar = {
+            k: v for k, v in modulos_sidebar.items() if k not in _MODULOS_OCULTOS_ADMINISTRATIVA
+        }
     show_pp = not _is_externos_area(current_area)
     return render_template(
         "dashboard.html",
@@ -1958,6 +2088,7 @@ def _registro_form_view(modulo_id):
             estado = _normalize_estado_base_dotaciones("DISPONIBLE")
             obj = BaseDotaciones(codigo=codigo, cantidad=cantidad, talla=talla, estado=estado, area_uso=area_uso)
             db.session.add(obj)
+            _registrar_cambio("ingreso-dotacion", "CREAR", obj=obj)
             db.session.commit()
             flash("Dotación registrada en Base de Dotaciones.", "success")
             return redirect(url_for("main.registro_form", modulo_id=modulo_id))
@@ -2042,6 +2173,7 @@ def _registro_form_view(modulo_id):
                 es_planta_desposte=_registro_manual_es_planta_desposte(current_area),
             )
             db.session.add(obj)
+            _registrar_cambio("registro-personal", "CREAR", obj=obj)
             db.session.commit()
             flash("Personal registrado. Aparece en Personal Registrado hasta que se asigne locker o dotación.", "success")
             return redirect(url_for("main.modulo", modulo_id="registro-personal"))
@@ -2128,6 +2260,7 @@ def _registro_form_view(modulo_id):
             for _ in range(cantidad):
                 obj = BaseLockers(codigo=codigo, area=area, subarea="", area_lockers=area_lockers, estado=estado)
                 db.session.add(obj)
+                _registrar_cambio("ingreso-lockers", "CREAR", obj=obj)
             db.session.commit()
             flash("Locker(s) registrado(s) en Base de Lockers.", "success")
             return redirect(url_for("main.registro_form", modulo_id=modulo_id))
@@ -2228,6 +2361,15 @@ def modulo(modulo_id):
     if modulo_id == "personal-presupuestado" and _is_externos_area(session.get("current_area")):
         flash(f"El módulo Personal presupuestado no está disponible en el área «{_LABEL_AREA_EXTERNAS_OTRAS}».", "error")
         return redirect(url_for("main.dashboard"))
+    if (
+        modulo_id in _MODULOS_OCULTOS_ADMINISTRATIVA
+        and (session.get("current_area") or "").strip().upper() == _ADMINISTRATIVA_UPPER
+    ):
+        flash(
+            "Historial de Retiros e Historial de Cambios no están disponibles en el área ADMINISTRATIVA.",
+            "error",
+        )
+        return redirect(url_for("main.dashboard"))
     # Redirigir solo ingreso-dotacion e ingreso-lockers al formulario; registro-personal es listado "Personal Registrado"
     if modulo_id in ("ingreso-dotacion", "ingreso-lockers"):
         return redirect(url_for("main.registro_form", modulo_id=modulo_id))
@@ -2275,6 +2417,9 @@ def modulo(modulo_id):
         if not can_edit:
             flash("No tiene permiso para realizar esta acción. Solo puede consultar.", "error")
             return redirect(url_for("main.modulo", modulo_id=modulo_id))
+        if modulo_id == "historial-cambios":
+            flash("El Historial de Cambios es solo consulta; no se puede modificar.", "error")
+            return redirect(url_for("main.modulo", modulo_id=modulo_id))
 
         eliminar_id = request.form.get("eliminar_id", type=int)
         edit_id = request.form.get("edit_id", type=int)
@@ -2287,30 +2432,30 @@ def modulo(modulo_id):
                     if getattr(obj, area_key, None) != user_area:
                         flash("No puede eliminar registros de otra área.", "error")
                         return redirect(url_for("main.modulo", modulo_id=modulo_id, page=next_page))
+                # Eliminación manual / cancelación: NO va a historial de retiros.
+                # Historial de retiros solo se llena desde Gestión Humana (INACTIVO/retirado).
                 if Model == RegistroAsignaciones:
                     cod_dot = (getattr(obj, "codigo_dotacion", None) or "").strip()
                     cod_lock = (getattr(obj, "codigo_lockets", None) or "").strip()
-                    hist = HistorialRetiros(
-                        operario=getattr(obj, "operario", "") or "",
-                        identificacion=getattr(obj, "identificacion", "") or "",
-                        codigo_dotacion=cod_dot,
-                        codigo_lockets=cod_lock,
-                        area=getattr(obj, "area", "") or "",
-                        talla_operarios=getattr(obj, "talla_operarios", "") or "",
-                        talla_dotacion=getattr(obj, "talla_dotacion", "") or "",
-                        area_lockers=getattr(obj, "area_lockers", "") or "",
-                        fecha_retiro=datetime.utcnow(),
-                        es_planta_desposte=bool(getattr(obj, "es_planta_desposte", False)),
-                    )
-                    db.session.add(hist)
+                    cod_seca = (getattr(obj, "codigo_seca_botas", None) or "").strip()
                     reg_area = (getattr(obj, "area", None) or "").strip()
                     if cod_dot:
                         _liberar_dotacion(cod_dot, area=reg_area)
                     if cod_lock:
                         _liberar_locker(cod_lock, area=reg_area)
+                    if cod_seca:
+                        _liberar_seca_botas(cod_seca)
+                _registrar_cambio(modulo_id, "ELIMINAR", obj=obj)
                 db.session.delete(obj)
                 db.session.commit()
-                flash("Registro eliminado." + (" Pasa a Historial de Retiros y los códigos vuelven a estar disponibles." if Model == RegistroAsignaciones else ""), "success")
+                if Model == RegistroAsignaciones:
+                    flash(
+                        "Registro eliminado. Los códigos vuelven a estar disponibles. "
+                        "No se envió a Historial de Retiros (solo aplica por baja en Gestión Humana).",
+                        "success",
+                    )
+                else:
+                    flash("Registro eliminado.", "success")
             return redirect(url_for("main.modulo", modulo_id=modulo_id, page=next_page))
 
         if edit_id:
@@ -2476,6 +2621,7 @@ def modulo(modulo_id):
                     _marcar_dotacion_asignada(cod_dot, area=reg_area)
                 if cod_lock:
                     _marcar_locker_asignado(cod_lock, area=reg_area)
+            _registrar_cambio(modulo_id, "EDITAR", obj=obj)
             db.session.commit()
             flash("Registro actualizado.", "success")
             return redirect(url_for("main.modulo", modulo_id=modulo_id, page=next_page))
@@ -2639,6 +2785,7 @@ def modulo(modulo_id):
             if cod_lock:
                 _marcar_locker_asignado(cod_lock, area=current_area)
         db.session.add(obj)
+        _registrar_cambio(modulo_id, "CREAR", obj=obj)
         db.session.commit()
         flash("Registro creado.", "success")
         return redirect(url_for("main.modulo", modulo_id=modulo_id))
@@ -2819,6 +2966,8 @@ def modulo(modulo_id):
     elif Model == HistorialRetiros:
         od = db.func.coalesce(HistorialRetiros.fecha_retiro, HistorialRetiros.creado_en)
         order_asignaciones_reciente = (od.desc(), HistorialRetiros.id.desc())
+    elif Model == HistorialCambios:
+        order_asignaciones_reciente = (HistorialCambios.creado_en.desc(), HistorialCambios.id.desc())
 
     # Orden general de módulos por código (menor -> mayor) cuando exista un campo de código.
     # Si no hay código aplicable, mantiene orden por id descendente.

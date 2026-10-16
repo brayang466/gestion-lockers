@@ -10,7 +10,9 @@
   {% if gh_autofill|default(false) %}
   <p class="hint hint-gh">
     {% if gh_area %}
-    Autollenado desde <strong>Gestión Humana</strong> → área <strong>{{ gh_area }}</strong> (empleados activos, más recientes primero). Escriba la cédula o el nombre.
+    Autollenado desde <strong>Gestión Humana</strong> → área <strong>{{ gh_area }}</strong>
+    (solo ingresos <strong>del año en curso</strong>, activos y que <strong>aún no</strong> estén en registro de asignaciones; sin duplicados).
+    Escriba la cédula o el nombre.
     {% else %}
     Esta área aún no tiene mapeo a Gestión Humana; puede digitar los datos manualmente.
     {% endif %}
@@ -243,9 +245,11 @@
     box.hidden = false;
     var head = '';
     if (meta.total_gh_activos != null) {
-      head = '<div class="gh-suggest-status">Disponibles: ' + (meta.disponibles_mostrados || items.length) +
+      head = '<div class="gh-suggest-status">Disponibles ' + (meta.anio || '') + ': ' + (meta.disponibles_mostrados || items.length) +
         ' · Ya en app: ' + (meta.ya_registrados_en_app || 0) +
-        ' · Activos GH: ' + meta.total_gh_activos + '</div>';
+        ' · Activos GH: ' + meta.total_gh_activos +
+        (meta.omitidos_anio_anterior ? (' · Omitidos años ant.: ' + meta.omitidos_anio_anterior) : '') +
+        '</div>';
     }
     box.innerHTML = head + items.map(function (it, idx) {
       var metaLine = (it.fecha_ingreso ? ('Ingreso: ' + it.fecha_ingreso) : '') + (it.estado ? (' · ' + it.estado) : '');

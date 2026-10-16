@@ -579,11 +579,23 @@ def _merge_campo(destino, origen, attr: str) -> bool:
     return True
 
 
+def _append_obs(hist, fragment: str) -> None:
+    """Agrega fragmento a observaciones sin duplicar (máx. 500)."""
+    frag = (fragment or "").strip()
+    if not frag or hist is None:
+        return
+    obs = (hist.observaciones or "").strip()
+    if frag.upper() in obs.upper():
+        return
+    hist.observaciones = (f"{obs} | {frag}" if obs else frag)[:500]
+
+
 def aplicar_retiro_sobre_asignaciones(documento: str, hist) -> dict[str, Any]:
     """
-    Si la persona está en registro_asignaciones:
-    - Pasa códigos/tallas/área lockers al historial de retiro (sin pisar lo ya cargado).
-    - Libera locker, dotación y seca botas.
+    Si la persona está en registro_asignaciones (cualquier área):
+    - Pasa códigos/tallas/área lockers al historial de retiro.
+    - Si hay varias áreas, conserva la más completa en columnas y el resto en observaciones.
+    - Libera locker, dotación y seca botas (vuelven a disponibles).
     - Elimina la(s) asignación(es).
     """
     from app import db
@@ -597,47 +609,68 @@ def aplicar_retiro_sobre_asignaciones(documento: str, hist) -> dict[str, Any]:
         return {"asignaciones_cerradas": 0, "codigos_liberados": []}
 
     liberados: list[str] = []
-    # Preferir la asignación con más códigos
     asignaciones_ord = sorted(asignaciones, key=_score_historial, reverse=True)
 
-    for asg in asignaciones_ord:
-        for attr in (
-            "codigo_dotacion",
-            "codigo_lockets",
-            "talla_operarios",
-            "talla_dotacion",
-            "area_lockers",
-            "operario",
-        ):
-            _merge_campo(hist, asg, attr)
-        if not (hist.area or "").strip() and (asg.area or "").strip():
-            hist.area = (asg.area or "").strip()
-        if getattr(asg, "es_planta_desposte", False):
-            hist.es_planta_desposte = True
-
+    for idx, asg in enumerate(asignaciones_ord):
+        reg_area = (asg.area or "").strip()
         cod_dot = (asg.codigo_dotacion or "").strip()
         cod_lock = (asg.codigo_lockets or "").strip()
         cod_seca = (getattr(asg, "codigo_seca_botas", None) or "").strip()
-        reg_area = (asg.area or "").strip()
+
+        if idx == 0:
+            for attr in (
+                "codigo_dotacion",
+                "codigo_lockets",
+                "talla_operarios",
+                "talla_dotacion",
+                "area_lockers",
+                "operario",
+            ):
+                _merge_campo(hist, asg, attr)
+            if not (hist.area or "").strip() and reg_area:
+                hist.area = reg_area
+        else:
+            partes = []
+            if reg_area:
+                partes.append(f"Área:{reg_area}")
+            if cod_lock:
+                partes.append(f"Locker:{cod_lock}")
+            if cod_dot:
+                partes.append(f"Dotación:{cod_dot}")
+            if cod_seca:
+                partes.append(f"Seca:{cod_seca}")
+            talla_op = (asg.talla_operarios or "").strip()
+            talla_dot = (asg.talla_dotacion or "").strip()
+            area_lock = (asg.area_lockers or "").strip()
+            if talla_op:
+                partes.append(f"Talla op:{talla_op}")
+            if talla_dot:
+                partes.append(f"Talla dot:{talla_dot}")
+            if area_lock:
+                partes.append(f"Área lockers:{area_lock}")
+            if partes:
+                _append_obs(hist, "Asig.extra " + " ".join(partes))
+
+        if getattr(asg, "es_planta_desposte", False):
+            hist.es_planta_desposte = True
+
+        for label, attr in (("Email", "email"), ("Tel", "telefono"), ("Cargo", "cargo")):
+            val = (getattr(asg, attr, None) or "").strip()
+            if val:
+                _append_obs(hist, f"{label}: {val}")
+
+        if cod_seca and idx == 0:
+            _append_obs(hist, f"Seca botas: {cod_seca}" + (f" ({reg_area})" if reg_area else ""))
 
         if cod_dot:
             _liberar_dotacion_simple(cod_dot)
-            liberados.append(f"dotacion:{cod_dot}")
+            liberados.append(f"dotacion:{cod_dot}@{reg_area or '?'}")
         if cod_lock:
             _liberar_locker_simple(cod_lock)
-            liberados.append(f"locker:{cod_lock}")
+            liberados.append(f"locker:{cod_lock}@{reg_area or '?'}")
         if cod_seca:
             _liberar_seca_botas_simple(cod_seca)
-            liberados.append(f"seca:{cod_seca}")
-            # Historial no tiene columna seca: dejar rastro en observaciones si no está
-            obs = (hist.observaciones or "").strip()
-            tag = f"Seca botas: {cod_seca}"
-            if tag.upper() not in obs.upper():
-                hist.observaciones = (f"{obs} | {tag}" if obs else tag)[:500]
-
-        # Si el historial quedó en otra área vacía, conservar área de la asignación
-        if reg_area and not (hist.area or "").strip():
-            hist.area = reg_area
+            liberados.append(f"seca:{cod_seca}@{reg_area or '?'}")
 
         db.session.delete(asg)
 
