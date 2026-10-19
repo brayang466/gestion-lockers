@@ -2,10 +2,22 @@
 {% from 'includes/module_icons.html' import module_icon %}
 {% block title %}Usabilidad por usuario - LockerBeef{% endblock %}
 {% block content %}
-<div class="usabilidad-page">
+<div class="usabilidad-page usa-analytics"
+     id="usaPage"
+     data-u-labels='{{ analytics.chart_usuarios_labels|tojson }}'
+     data-u-data='{{ analytics.chart_usuarios_data|tojson }}'
+     data-m-labels='{{ analytics.chart_modulos_labels|tojson }}'
+     data-m-data='{{ analytics.chart_modulos_data|tojson }}'
+     data-h-labels='{{ analytics.chart_horas_labels|tojson }}'
+     data-h-data='{{ analytics.chart_horas_data|tojson }}'
+     data-a-labels='{{ analytics.chart_areas_labels|tojson }}'
+     data-a-data='{{ analytics.chart_areas_data|tojson }}'>
     <header class="usabilidad-header">
         <h1>Usabilidad por usuario</h1>
-        <p class="hint">Historial de navegación dentro del sistema: módulos visitados, área activa, hora y fecha. Solo visible para Super Administrador.</p>
+        <p class="hint">
+            Vista diaria del tiempo en línea, desconexiones y uso de módulos (sin superadmin).
+            Los tiempos se estiman a partir de la actividad registrada.
+        </p>
     </header>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -18,80 +30,325 @@
     {% endif %}
     {% endwith %}
 
-    <form method="get" action="{{ url_for('main.usabilidad') }}" class="usabilidad-filtros" aria-label="Filtros">
-        <div class="usabilidad-filtro">
-            <label for="user_id">Usuario</label>
-            <select id="user_id" name="user_id" class="form-select">
-                <option value="">— Todos —</option>
-                {% for u in usuarios_filtro %}
-                <option value="{{ u.id }}" {% if filtro_user_id == u.id %}selected{% endif %}>{{ u.nombre or u.email }}{% if u.email %} ({{ u.email }}){% endif %}</option>
-                {% endfor %}
-            </select>
-        </div>
+    <form method="get" action="{{ url_for('main.usabilidad') }}" class="usabilidad-filtros" aria-label="Filtro por fecha">
         <div class="usabilidad-filtro">
             <label for="fecha">Fecha</label>
-            <input type="date" id="fecha" name="fecha" class="form-input" value="{{ filtro_fecha or '' }}">
-        </div>
-        <div class="usabilidad-filtro usabilidad-filtro-q">
-            <label for="q">Buscar</label>
-            <input type="search" id="q" name="q" class="form-input" placeholder="Nombre, correo, acción, área…" value="{{ filtro_q or '' }}">
+            <input type="date" id="fecha" name="fecha" class="form-input" value="{{ filtro_fecha or '' }}" required>
         </div>
         <div class="usabilidad-filtro-actions">
-            <button type="submit" class="btn-accion btn-guardar">Filtrar</button>
-            <a href="{{ url_for('main.usabilidad') }}" class="btn-accion btn-cancelar">Limpiar</a>
+            <button type="submit" class="btn-accion btn-guardar">Ver día</button>
+            <a href="{{ url_for('main.usabilidad') }}" class="btn-accion btn-cancelar">Hoy</a>
         </div>
     </form>
 
-    <div class="modulo-actions">
-        <a href="{{ url_for('main.dashboard') }}" class="btn btn-back">← Dashboard</a>
-        <span class="usabilidad-total">{{ total }} registro{{ '' if total == 1 else 's' }} (máx. 500)</span>
+    <div class="usa-report-bar" aria-label="Descargar reporte">
+        <div class="usa-report-copy">
+            <strong>Descargar reporte detallado</strong>
+            <span class="hint">Excel con resumen, sesiones, módulos y eventos. Usa la fecha de arriba como referencia.</span>
+        </div>
+        <div class="usa-report-actions">
+            <a class="btn-accion btn-guardar" href="{{ url_for('main.usabilidad_reporte', fecha=filtro_fecha, periodo='diario') }}">Diario</a>
+            <a class="btn-accion btn-guardar usa-btn-week" href="{{ url_for('main.usabilidad_reporte', fecha=filtro_fecha, periodo='semanal') }}">Semanal</a>
+            <a class="btn-accion btn-guardar usa-btn-month" href="{{ url_for('main.usabilidad_reporte', fecha=filtro_fecha, periodo='mensual') }}">Mensual</a>
+        </div>
     </div>
 
-    {% if not grupos %}
+    <div class="modulo-actions">
+        <a href="{{ url_for('main.dashboard') }}" class="btn btn-back">← Dashboard</a>
+        <span class="usabilidad-total">{{ total }} evento{{ '' if total == 1 else 's' }} · {{ periodo_etiqueta or filtro_fecha }}</span>
+    </div>
+
+    <section class="usa-kpi-grid" aria-label="Resumen del día">
+        <article class="usa-kpi">
+            <div class="usa-kpi-label">Usuarios activos</div>
+            <div class="usa-kpi-value">{{ analytics.kpis.usuarios }}</div>
+        </article>
+        <article class="usa-kpi">
+            <div class="usa-kpi-label">Tiempo en línea</div>
+            <div class="usa-kpi-value usa-kpi-value--sm">{{ analytics.kpis.tiempo_online }}</div>
+        </article>
+        <article class="usa-kpi">
+            <div class="usa-kpi-label">Sesiones</div>
+            <div class="usa-kpi-value">{{ analytics.kpis.sesiones }}</div>
+        </article>
+        <article class="usa-kpi">
+            <div class="usa-kpi-label">Cierres / inactividad</div>
+            <div class="usa-kpi-value usa-kpi-value--sm">{{ analytics.kpis.cierres }} / {{ analytics.kpis.inactividad }}</div>
+        </article>
+        <article class="usa-kpi">
+            <div class="usa-kpi-label">Eventos</div>
+            <div class="usa-kpi-value">{{ analytics.kpis.eventos }}</div>
+        </article>
+    </section>
+
+    {% if total == 0 %}
     <div class="usabilidad-empty" role="status">
-        <p>No hay registros de navegación con los filtros actuales.</p>
-        <p class="hint">Los movimientos se guardan automáticamente cuando los usuarios navegan por el sistema.</p>
+        <p>No hay actividad registrada para esta fecha.</p>
+        <p class="hint">Prueba otro día. Se registran navegación, inicios y cierres de sesión (excepto superadmin).</p>
     </div>
     {% else %}
-    {% for grupo in grupos %}
-    <section class="usabilidad-dia" aria-label="Actividad del {{ grupo.label }}">
-        <h2 class="usabilidad-dia-titulo">{{ grupo.label }}</h2>
-        <div class="modulo-table-wrap usabilidad-table-wrap">
-            <table class="modulo-table usabilidad-table">
-                <thead>
-                    <tr>
-                        <th>Hora</th>
-                        <th>Usuario</th>
-                        <th>Rol</th>
-                        <th>Área</th>
-                        <th>Acción</th>
-                        <th>Ruta</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for log in grupo.registros %}
-                    <tr>
-                        <td data-label="Hora">{{ log.hora_local if log.hora_local is defined else (log.creado_en.strftime('%H:%M:%S') if log.creado_en else '—') }}</td>
-                        <td data-label="Usuario">
-                            <span class="usabilidad-user-name">{{ log.user_nombre or '—' }}</span>
-                            {% if log.user_email %}<span class="usabilidad-user-email">{{ log.user_email }}</span>{% endif %}
-                        </td>
-                        <td data-label="Rol">
-                            <span class="badge badge-{{ log.user_rol or 'usuario' }}">
-                                {% if (log.user_rol or '')|lower == 'superadmin' %}Super Administrador
-                                {% else %}{{ (log.user_rol or 'usuario')|capitalize }}{% endif %}
-                            </span>
-                        </td>
-                        <td data-label="Área">{{ log.area or '—' }}</td>
-                        <td data-label="Acción" class="usabilidad-accion">{{ log.accion or log.path }}</td>
-                        <td data-label="Ruta" class="usabilidad-path"><code>{{ log.metodo }} {{ log.path }}</code></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+
+    <section class="usa-charts" aria-label="Gráficos del día">
+        <div class="usa-chart-card">
+            <h3>Tiempo en línea por usuario</h3>
+            <p class="usa-chart-hint">Minutos estimados según actividad continua (gap &gt; inactividad = nueva sesión)</p>
+            <div class="usa-chart-wrap">
+                <canvas id="usaUsersChart" aria-label="Tiempo online por usuario"></canvas>
+            </div>
+        </div>
+        <div class="usa-chart-card">
+            <h3>Uso por módulo</h3>
+            <p class="usa-chart-hint">Qué pantallas se visitaron más en el día</p>
+            <div class="usa-chart-wrap usa-chart-wrap--donut">
+                <canvas id="usaModulesChart" aria-label="Uso por módulo"></canvas>
+            </div>
+        </div>
+        <div class="usa-chart-card">
+            <h3>Actividad por hora</h3>
+            <p class="usa-chart-hint">Distribución horaria de navegación (hora Colombia)</p>
+            <div class="usa-chart-wrap">
+                <canvas id="usaHoursChart" aria-label="Actividad por hora"></canvas>
+            </div>
+        </div>
+        <div class="usa-chart-card">
+            <h3>Áreas visitadas</h3>
+            <p class="usa-chart-hint">En qué áreas de trabajo estuvo cada sesión</p>
+            <div class="usa-chart-wrap">
+                <canvas id="usaAreasChart" aria-label="Áreas visitadas"></canvas>
+            </div>
         </div>
     </section>
-    {% endfor %}
+
+    <section class="usa-sessions" aria-label="Sesiones del día">
+        <div class="usa-section-head">
+            <h2>Sesiones</h2>
+            <p class="hint">Inicio, fin estimado, duración y motivo de cierre</p>
+        </div>
+        <div class="usa-session-list">
+            {% for s in analytics.sesiones %}
+            <article class="usa-session-card">
+                <header class="usa-session-top">
+                    <div>
+                        <div class="usa-session-name">{{ s.nombre }}</div>
+                        {% if s.email %}<div class="usa-session-email">{{ s.email }}</div>{% endif %}
+                    </div>
+                    <div class="usa-session-dur">{{ s.duracion }}</div>
+                </header>
+                <div class="usa-session-meta">
+                    <span><strong>{{ s.inicio_txt }}</strong> → <strong>{{ s.fin_txt }}</strong></span>
+                    <span class="usa-pill">{{ s.cierre }}</span>
+                    <span>{{ s.n_eventos }} evento{{ '' if s.n_eventos == 1 else 's' }}</span>
+                </div>
+                <div class="usa-session-extra">
+                    <div><span class="usa-muted">Áreas:</span> {{ s.areas_txt }}</div>
+                    <div><span class="usa-muted">Módulos top:</span> {{ s.modulos_txt }}</div>
+                </div>
+            </article>
+            {% else %}
+            <p class="hint">No se pudieron armar sesiones con los eventos filtrados.</p>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="usa-detail" aria-label="Detalle de eventos">
+        <div class="usa-section-head">
+            <h2>Detalle de eventos</h2>
+            <p class="hint">Cronología por usuario (más reciente primero)</p>
+        </div>
+        {% for grupo in grupos %}
+        <details class="usa-user-details"{% if loop.first %} open{% endif %}>
+            <summary>
+                <span class="usa-user-summary-name">{{ grupo.label }}</span>
+                {% if grupo.email %}<span class="usa-user-summary-email">{{ grupo.email }}</span>{% endif %}
+                <span class="usa-user-summary-count">{{ grupo.registros|length }} evento{{ '' if grupo.registros|length == 1 else 's' }}</span>
+            </summary>
+            <div class="modulo-table-wrap usabilidad-table-wrap">
+                <table class="modulo-table usabilidad-table">
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>Área</th>
+                            <th>Módulo</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in grupo.registros %}
+                        <tr>
+                            <td data-label="Hora">{{ log.hora_local }}</td>
+                            <td data-label="Área">{{ log.area or '—' }}</td>
+                            <td data-label="Módulo">{{ log.modulo_label }}</td>
+                            <td data-label="Acción" class="usabilidad-accion">{{ log.accion or log.path }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </details>
+        {% endfor %}
+    </section>
     {% endif %}
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script>
+(function () {
+  function parseJson(el, attr) {
+    try { return JSON.parse(el.getAttribute(attr) || '[]'); } catch (e) { return []; }
+  }
+  function whenReady(cb) {
+    if (typeof Chart !== 'undefined') { cb(); return; }
+    var n = 0;
+    var t = setInterval(function () {
+      n += 1;
+      if (typeof Chart !== 'undefined' || n > 50) {
+        clearInterval(t);
+        if (typeof Chart !== 'undefined') cb();
+      }
+    }, 40);
+  }
+  function boot() {
+    var root = document.getElementById('usaPage');
+    if (!root || typeof Chart === 'undefined') return;
+    var uLabels = parseJson(root, 'data-u-labels');
+    var uData = parseJson(root, 'data-u-data');
+    var mLabels = parseJson(root, 'data-m-labels');
+    var mData = parseJson(root, 'data-m-data');
+    var hLabels = parseJson(root, 'data-h-labels');
+    var hData = parseJson(root, 'data-h-data');
+    var aLabels = parseJson(root, 'data-a-labels');
+    var aData = parseJson(root, 'data-a-data');
+    var tip = {
+      backgroundColor: 'rgba(15,23,42,0.92)',
+      titleColor: '#f8fafc',
+      bodyColor: '#e2e8f0',
+      padding: 10,
+      cornerRadius: 10
+    };
+
+    var usersCanvas = document.getElementById('usaUsersChart');
+    if (usersCanvas) {
+      new Chart(usersCanvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: uLabels,
+          datasets: [{
+            label: 'Minutos',
+            data: uData,
+            borderRadius: 10,
+            backgroundColor: 'rgba(248,113,113,0.75)',
+            borderColor: 'rgba(239,68,68,0.95)',
+            borderWidth: 1,
+            maxBarThickness: 42
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: tip },
+          scales: {
+            x: { beginAtZero: true, ticks: { precision: 0, color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.12)' } },
+            y: { ticks: { color: '#cbd5e1' }, grid: { display: false } }
+          }
+        }
+      });
+    }
+
+    var modCanvas = document.getElementById('usaModulesChart');
+    if (modCanvas) {
+      new Chart(modCanvas.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: mLabels,
+          datasets: [{
+            data: mData,
+            backgroundColor: [
+              'rgba(248,113,113,0.85)', 'rgba(56,189,248,0.85)', 'rgba(52,211,153,0.85)',
+              'rgba(251,191,36,0.85)', 'rgba(167,139,250,0.85)', 'rgba(251,146,60,0.9)',
+              'rgba(244,114,182,0.85)', 'rgba(125,211,252,0.85)', 'rgba(190,242,100,0.8)',
+              'rgba(253,186,116,0.85)', 'rgba(196,181,253,0.85)', 'rgba(148,163,184,0.7)'
+            ],
+            borderWidth: 2,
+            borderColor: 'rgba(15,23,42,0.55)',
+            hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '62%',
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 10, font: { size: 11 } } },
+            tooltip: tip
+          }
+        }
+      });
+    }
+
+    var hoursCanvas = document.getElementById('usaHoursChart');
+    if (hoursCanvas) {
+      new Chart(hoursCanvas.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: hLabels,
+          datasets: [{
+            label: 'Eventos',
+            data: hData,
+            fill: true,
+            tension: 0.35,
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56,189,248,0.18)',
+            borderWidth: 2.5,
+            pointRadius: 0,
+            pointHoverRadius: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: tip },
+          scales: {
+            x: { ticks: { color: '#94a3b8', maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } },
+            y: { beginAtZero: true, ticks: { precision: 0, color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.12)' } }
+          }
+        }
+      });
+    }
+
+    var areasCanvas = document.getElementById('usaAreasChart');
+    if (areasCanvas) {
+      new Chart(areasCanvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: aLabels,
+          datasets: [{
+            label: 'Visitas',
+            data: aData,
+            borderRadius: 8,
+            backgroundColor: 'rgba(52,211,153,0.7)',
+            borderColor: 'rgba(16,185,129,0.95)',
+            borderWidth: 1,
+            maxBarThickness: 36
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: tip },
+          scales: {
+            x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+            y: { beginAtZero: true, ticks: { precision: 0, color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.12)' } }
+          }
+        }
+      });
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { whenReady(boot); });
+  } else {
+    whenReady(boot);
+  }
+})();
+</script>
 {% endblock %}

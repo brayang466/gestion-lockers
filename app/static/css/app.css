@@ -3620,7 +3620,7 @@ html.theme-light .modulo-row-clickable:hover {
 }
 
 /* ?? Usabilidad por usuario ?? */
-.usabilidad-page { max-width: 1100px; margin: 0 auto; }
+.usabilidad-page { max-width: 1180px; margin: 0 auto; }
 .usabilidad-header { margin-bottom: 1.25rem; }
 .usabilidad-header h1 { margin: 0 0 0.35rem; font-size: 1.55rem; font-weight: 800; }
 .usabilidad-header .hint { margin: 0; color: var(--app-muted); max-width: 52rem; }
@@ -3631,25 +3631,166 @@ html.theme-light .modulo-row-clickable:hover {
 }
 .usabilidad-filtro { display: flex; flex-direction: column; gap: 0.3rem; min-width: 160px; }
 .usabilidad-filtro label { font-size: 0.78rem; font-weight: 600; color: var(--app-muted); }
-.usabilidad-filtro-q { flex: 1 1 220px; }
 .usabilidad-filtro-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 .usabilidad-total { margin-left: auto; color: var(--app-muted); font-size: 0.9rem; }
+.usa-report-bar {
+  display: flex; flex-wrap: wrap; gap: 0.85rem 1.25rem; align-items: center;
+  justify-content: space-between; margin: 0 0 1rem;
+  padding: 0.95rem 1.1rem; border-radius: var(--radio-lg);
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+}
+.usa-report-copy { display: flex; flex-direction: column; gap: 0.2rem; max-width: 36rem; }
+.usa-report-copy strong { font-size: 0.95rem; }
+.usa-report-copy .hint { margin: 0; font-size: 0.8rem; color: var(--app-muted); }
+.usa-report-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.usa-btn-week { background: #0f766e !important; border-color: #0f766e !important; }
+.usa-btn-month { background: #1d4ed8 !important; border-color: #1d4ed8 !important; }
 .usabilidad-empty {
   padding: 2rem 1.25rem; text-align: center; border-radius: var(--radio-lg);
   background: var(--glass-bg); border: 1px dashed var(--glass-border);
 }
-.usabilidad-dia { margin-top: 1.5rem; }
-.usabilidad-dia-titulo {
-  font-size: 0.95rem; font-weight: 700; margin: 0 0 0.65rem;
-  color: var(--app-amber, #fbbf24); letter-spacing: 0.02em;
-}
 .usabilidad-table-wrap { margin-bottom: 0.5rem; }
-.usabilidad-user-name { display: block; font-weight: 600; }
-.usabilidad-user-email { display: block; font-size: 0.78rem; color: var(--app-muted); }
 .usabilidad-accion { font-weight: 600; }
-.usabilidad-path code {
-  font-size: 0.75rem; opacity: 0.85; word-break: break-all;
-  background: transparent; color: inherit;
+
+/* Analítica usabilidad */
+.usa-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.75rem 0 1.25rem;
+}
+.usa-kpi {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background:
+    radial-gradient(420px 120px at 0% 0%, rgba(239, 68, 68, 0.12), transparent 60%),
+    var(--glass-bg, rgba(15, 23, 42, 0.35));
+}
+.usa-kpi-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+.usa-kpi-value {
+  margin-top: 0.35rem;
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--ent-accent, #f87171);
+  line-height: 1.15;
+}
+.usa-kpi-value--sm { font-size: 1.15rem; }
+.usa-charts {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.usa-chart-card {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  padding: 1rem 1.1rem 0.85rem;
+  background: var(--glass-bg, rgba(15, 23, 42, 0.35));
+}
+.usa-chart-card h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+.usa-chart-hint {
+  margin: 0.2rem 0 0.65rem;
+  font-size: 0.78rem;
+  color: var(--app-muted);
+}
+.usa-chart-wrap { height: 240px; position: relative; }
+.usa-chart-wrap--donut { height: 260px; }
+.usa-section-head { margin: 0.5rem 0 0.75rem; }
+.usa-section-head h2 { margin: 0; font-size: 1.05rem; font-weight: 800; }
+.usa-session-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-bottom: 1.5rem;
+}
+.usa-session-card {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), transparent), var(--glass-bg, rgba(15,23,42,0.3));
+}
+.usa-session-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.usa-session-name { font-weight: 800; }
+.usa-session-email { font-size: 0.78rem; color: var(--app-muted); }
+.usa-session-dur {
+  font-weight: 800;
+  color: var(--ent-accent, #f87171);
+  white-space: nowrap;
+}
+.usa-session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  margin-top: 0.55rem;
+  font-size: 0.82rem;
+  color: var(--app-muted);
+}
+.usa-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,0.25);
+  background: rgba(148,163,184,0.08);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.usa-session-extra {
+  margin-top: 0.55rem;
+  font-size: 0.8rem;
+  display: grid;
+  gap: 0.2rem;
+}
+.usa-muted { color: var(--app-muted); }
+.usa-user-details {
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 12px;
+  margin-bottom: 0.65rem;
+  background: var(--glass-bg, rgba(15,23,42,0.28));
+  overflow: hidden;
+}
+.usa-user-details > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.85rem;
+  align-items: baseline;
+  padding: 0.75rem 1rem;
+  font-weight: 700;
+}
+.usa-user-details > summary::-webkit-details-marker { display: none; }
+.usa-user-summary-email { font-weight: 500; color: var(--app-muted); font-size: 0.82rem; }
+.usa-user-summary-count { margin-left: auto; font-size: 0.78rem; color: var(--app-muted); font-weight: 600; }
+.usa-user-details[open] > summary {
+  border-bottom: 1px solid rgba(148,163,184,0.14);
+}
+.usa-user-details .usabilidad-table-wrap { padding: 0.35rem 0.5rem 0.65rem; }
+
+@media (max-width: 1000px) {
+  .usa-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .usa-charts { grid-template-columns: 1fr; }
+  .usa-session-list { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .usa-kpi-grid { grid-template-columns: 1fr; }
 }
 .areas-flash-wrap { margin-bottom: 1rem; }
 

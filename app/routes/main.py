@@ -3,7 +3,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from zoneinfo import ZoneInfo
-from flask import Blueprint, render_template, redirect, url_for, request, session, flash, current_app, send_from_directory
+from flask import Blueprint, render_template, redirect, url_for, request, session, flash, current_app, send_from_directory, send_file
 from itsdangerous import URLSafeTimedSerializer, BadSignature
 from app import db
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -201,10 +201,52 @@ def _usabilidad_accion_label(path, method="GET"):
     return f"{method} {path}"
 
 
+def _registrar_usabilidad_evento(
+    *,
+    user_id=None,
+    user_nombre="",
+    user_email="",
+    user_rol="",
+    area="",
+    path="",
+    metodo="GET",
+    accion="",
+):
+    """Inserta un evento de usabilidad (no bloquea la app si falla).
+    No registra actividad del superadmin."""
+    try:
+        rol = (user_rol or "").strip().lower()
+        if rol == "superadmin":
+            return
+        # Si viene de sesión actual y es superadmin, tampoco.
+        if (session.get("user_rol") or "").strip().lower() == "superadmin":
+            return
+        db.session.add(
+            UsabilidadLog(
+                user_id=user_id,
+                user_nombre=(user_nombre or "")[:120],
+                user_email=(user_email or "")[:120],
+                user_rol=(user_rol or "")[:30],
+                area=(area or "")[:100],
+                path=(path or "/")[:255],
+                metodo=(metodo or "GET")[:10],
+                accion=(accion or _usabilidad_accion_label(path, metodo))[:255],
+            )
+        )
+        db.session.commit()
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
+
 def _log_usabilidad_navegacion():
     """Persiste un registro de navegación (no bloquea la app si falla)."""
     try:
         if session.get("user_id") is None:
+            return
+        if (session.get("user_rol") or "").strip().lower() == "superadmin":
             return
         path = request.path or ""
         method = (request.method or "GET").upper()
@@ -226,19 +268,16 @@ def _log_usabilidad_navegacion():
             return
         session["_usa_last_path"] = path
         session["_usa_last_ts"] = now
-        db.session.add(
-            UsabilidadLog(
-                user_id=session.get("user_id"),
-                user_nombre=(session.get("user_nombre") or "")[:120],
-                user_email=(session.get("user_email") or "")[:120],
-                user_rol=(session.get("user_rol") or "")[:30],
-                area=(session.get("current_area") or "")[:100],
-                path=path[:255],
-                metodo=method[:10],
-                accion=_usabilidad_accion_label(path, method)[:255],
-            )
+        _registrar_usabilidad_evento(
+            user_id=session.get("user_id"),
+            user_nombre=session.get("user_nombre") or "",
+            user_email=session.get("user_email") or "",
+            user_rol=session.get("user_rol") or "",
+            area=session.get("current_area") or "",
+            path=path,
+            metodo=method,
+            accion=_usabilidad_accion_label(path, method),
         )
-        db.session.commit()
     except Exception:
         try:
             db.session.rollback()
@@ -263,6 +302,16 @@ def _idle_timeout_guard():
     except Exception:
         last_i = None
     if last_i is not None and (now - last_i) > IDLE_TIMEOUT_SECONDS:
+        _registrar_usabilidad_evento(
+            user_id=session.get("user_id"),
+            user_nombre=session.get("user_nombre") or "",
+            user_email=session.get("user_email") or "",
+            user_rol=session.get("user_rol") or "",
+            area=session.get("current_area") or "",
+            path="/logout",
+            metodo="GET",
+            accion="Desconexión por inactividad",
+        )
         session.clear()
         return redirect(url_for("main.login", reason="idle"))
     session["last_activity_ts"] = now
@@ -1066,6 +1115,16 @@ def login():
         session["session_started_ts_ms"] = int(datetime.utcnow().timestamp() * 1000)
         session.pop("current_area", None)
         session.pop("logout_to_integrado", None)
+        _registrar_usabilidad_evento(
+            user_id=user.id,
+            user_nombre=session.get("user_nombre") or "",
+            user_email=session.get("user_email") or "",
+            user_rol=session.get("user_rol") or "",
+            area="",
+            path="/login",
+            metodo="POST",
+            accion="Inicio de sesión",
+        )
         if recordarme:
             session.permanent = True
         resp = redirect(url_for("main.areas"))
@@ -1163,6 +1222,16 @@ def acceso_integrado():
         session["session_started_ts_ms"] = int(datetime.utcnow().timestamp() * 1000)
         session.pop("current_area", None)
         session["logout_to_integrado"] = True
+        _registrar_usabilidad_evento(
+            user_id=user.id,
+            user_nombre=session.get("user_nombre") or "",
+            user_email=session.get("user_email") or "",
+            user_rol=session.get("user_rol") or "",
+            area="",
+            path="/acceso-integrado",
+            metodo="POST",
+            accion="Inicio de sesión (integrado)",
+        )
         return redirect(url_for("main.areas"))
 
     usuarios = _usuarios_activos()
@@ -1172,6 +1241,17 @@ def acceso_integrado():
 @bp.route("/logout")
 def logout():
     to_integrado = bool(session.get("logout_to_integrado"))
+    if session.get("user_id") is not None:
+        _registrar_usabilidad_evento(
+            user_id=session.get("user_id"),
+            user_nombre=session.get("user_nombre") or "",
+            user_email=session.get("user_email") or "",
+            user_rol=session.get("user_rol") or "",
+            area=session.get("current_area") or "",
+            path="/logout",
+            metodo="GET",
+            accion="Cierre de sesión",
+        )
     session.clear()
     if to_integrado:
         return redirect(url_for("main.acceso_integrado"))
@@ -1987,66 +2067,509 @@ def usuarios():
     )
 
 
-@bp.route("/dashboard/usabilidad")
-@login_required
-@_superadmin_required
-def usabilidad():
-    """Historial de navegación por usuario. Solo superadmin."""
-    user_id = request.args.get("user_id", type=int)
-    q = (request.args.get("q") or "").strip()
-    fecha = (request.args.get("fecha") or "").strip()
+def _fmt_duracion_minutos(minutos):
+    """Formato legible de duración (minutos → 1h 23m)."""
+    try:
+        m = max(0, int(round(float(minutos or 0))))
+    except (TypeError, ValueError):
+        m = 0
+    if m < 60:
+        return f"{m} min"
+    h, r = divmod(m, 60)
+    if r == 0:
+        return f"{h} h"
+    return f"{h} h {r} min"
 
-    query = UsabilidadLog.query
-    if user_id:
-        query = query.filter(UsabilidadLog.user_id == user_id)
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            db.or_(
-                UsabilidadLog.user_nombre.ilike(like),
-                UsabilidadLog.user_email.ilike(like),
-                UsabilidadLog.accion.ilike(like),
-                UsabilidadLog.path.ilike(like),
-                UsabilidadLog.area.ilike(like),
-            )
+
+def _usabilidad_modulo_de_path(path, accion=""):
+    """Clasifica un path en módulo amigable para gráficos de uso."""
+    path = (path or "").rstrip("/") or "/"
+    accion_l = (accion or "").lower()
+    if path in ("/login", "/acceso-integrado") or "inicio de sesión" in accion_l:
+        return "Inicio de sesión"
+    if path == "/logout" or "cierre de sesión" in accion_l or "inactividad" in accion_l:
+        return "Cierre / desconexión"
+    if path == "/areas" or path.startswith("/entrar-area/"):
+        return "Selector de áreas"
+    if path == "/dashboard":
+        return "Dashboard"
+    if path == "/dashboard/usuarios":
+        return "Gestión de usuarios"
+    if path == "/dashboard/usabilidad":
+        return "Usabilidad"
+    if path.startswith("/dashboard/registro/"):
+        mid = path.rsplit("/", 1)[-1]
+        return MODULOS_CONFIG.get(mid, {}).get("titulo", mid)
+    if path.startswith("/dashboard/"):
+        parts = [p for p in path.split("/") if p]
+        if len(parts) >= 2 and parts[1] in MODULOS_CONFIG:
+            return MODULOS_CONFIG[parts[1]].get("titulo", parts[1])
+    return "Otros"
+
+
+def _analizar_usabilidad(logs, *, ranking_limit=15, sesiones_limit=40, modulos_limit=12):
+    """
+    Deriva sesiones, tiempo en línea, desconexiones y uso por módulo
+    a partir de eventos de navegación (sin schema nuevo).
+    """
+    gap_sec = max(int(IDLE_TIMEOUT_SECONDS or 1500), 300)
+    # Orden cronológico para armar sesiones
+    eventos = []
+    for log in logs:
+        local = _as_hora_colombia(log.creado_en) or _now_colombia()
+        eventos.append(
+            {
+                "log": log,
+                "local": local,
+                "user_key": log.user_id or (log.user_email or log.user_nombre or "anon"),
+                "nombre": (log.user_nombre or log.user_email or f"Usuario {log.user_id}" or "—").strip(),
+                "email": (log.user_email or "").strip(),
+                "rol": (log.user_rol or "").strip(),
+                "path": log.path or "",
+                "accion": log.accion or "",
+                "area": (log.area or "").strip(),
+                "modulo": _usabilidad_modulo_de_path(log.path, log.accion),
+            }
         )
-    if fecha:
-        try:
-            dia = datetime.strptime(fecha, "%Y-%m-%d").date()
-            # El filtro de fecha es día local Colombia → convertir a rango UTC almacenado
-            inicio_local = datetime(dia.year, dia.month, dia.day, 0, 0, 0, tzinfo=_TZ_COLOMBIA)
-            fin_local = inicio_local + timedelta(days=1)
-            inicio_utc = inicio_local.astimezone(_TZ_UTC).replace(tzinfo=None)
-            fin_utc = fin_local.astimezone(_TZ_UTC).replace(tzinfo=None)
-            query = query.filter(UsabilidadLog.creado_en >= inicio_utc, UsabilidadLog.creado_en < fin_utc)
-        except ValueError:
-            flash("Fecha inválida. Usa el formato AAAA-MM-DD.", "error")
+    eventos.sort(key=lambda e: (str(e["user_key"]), e["local"]))
 
-    logs = query.order_by(UsabilidadLog.creado_en.desc()).limit(500).all()
-    usuarios_filtro = Usuario.query.order_by(Usuario.nombre.asc()).all()
+    por_usuario = {}
+    for ev in eventos:
+        por_usuario.setdefault(ev["user_key"], []).append(ev)
 
-    # Agrupar por fecha local (Colombia) y exponer hora sincronizada con el equipo
+    sesiones = []
+    tiempo_por_usuario = {}
+    modulos_count = {}
+    horas_count = [0] * 24
+    areas_count = {}
+    cierres_explicitos = 0
+    cierres_inactividad = 0
+
+    for uid, evs in por_usuario.items():
+        ses_actual = None
+        for ev in evs:
+            modulos_count[ev["modulo"]] = modulos_count.get(ev["modulo"], 0) + 1
+            horas_count[ev["local"].hour] += 1
+            if ev["area"]:
+                areas_count[ev["area"]] = areas_count.get(ev["area"], 0) + 1
+
+            accion_l = (ev["accion"] or "").lower()
+            es_login = "inicio de sesión" in accion_l
+            es_logout = (
+                "cierre de sesión" in accion_l
+                or "inactividad" in accion_l
+                or (ev["path"] or "").rstrip("/") == "/logout"
+            )
+
+            if ses_actual is None or es_login:
+                if ses_actual is not None and not ses_actual.get("fin"):
+                    ses_actual["fin"] = ses_actual["eventos"][-1]["local"]
+                    ses_actual["cierre"] = "sin cierre registrado"
+                    sesiones.append(ses_actual)
+                ses_actual = {
+                    "user_key": uid,
+                    "nombre": ev["nombre"],
+                    "email": ev["email"],
+                    "rol": ev["rol"],
+                    "inicio": ev["local"],
+                    "fin": None,
+                    "cierre": "en curso / sin cierre",
+                    "eventos": [ev],
+                    "modulos": {},
+                    "areas": set(),
+                }
+            else:
+                prev = ses_actual["eventos"][-1]["local"]
+                gap = (ev["local"] - prev).total_seconds()
+                if gap > gap_sec:
+                    ses_actual["fin"] = prev
+                    ses_actual["cierre"] = "posible inactividad (sin actividad)"
+                    sesiones.append(ses_actual)
+                    cierres_inactividad += 1
+                    ses_actual = {
+                        "user_key": uid,
+                        "nombre": ev["nombre"],
+                        "email": ev["email"],
+                        "rol": ev["rol"],
+                        "inicio": ev["local"],
+                        "fin": None,
+                        "cierre": "en curso / sin cierre",
+                        "eventos": [ev],
+                        "modulos": {},
+                        "areas": set(),
+                    }
+                else:
+                    ses_actual["eventos"].append(ev)
+
+            if ses_actual is not None:
+                ses_actual["modulos"][ev["modulo"]] = ses_actual["modulos"].get(ev["modulo"], 0) + 1
+                if ev["area"]:
+                    ses_actual["areas"].add(ev["area"])
+                if es_logout:
+                    ses_actual["fin"] = ev["local"]
+                    if "inactividad" in accion_l:
+                        ses_actual["cierre"] = "Desconexión por inactividad"
+                        cierres_inactividad += 1
+                    else:
+                        ses_actual["cierre"] = "Cierre de sesión"
+                        cierres_explicitos += 1
+                    sesiones.append(ses_actual)
+                    ses_actual = None
+
+        if ses_actual is not None:
+            ses_actual["fin"] = ses_actual["eventos"][-1]["local"]
+            sesiones.append(ses_actual)
+
+    # Duraciones y ranking de usuarios
+    for s in sesiones:
+        ini = s["inicio"]
+        fin = s["fin"] or s["eventos"][-1]["local"]
+        # Tiempo online ≈ suma de gaps internos (máx. gap_sec) + mínimo 1 min si hay actividad
+        total_sec = 0
+        evs = s["eventos"]
+        for i in range(1, len(evs)):
+            gap = (evs[i]["local"] - evs[i - 1]["local"]).total_seconds()
+            if 0 < gap <= gap_sec:
+                total_sec += gap
+        if total_sec <= 0:
+            total_sec = max(60, (fin - ini).total_seconds()) if fin and ini else 60
+        mins = max(1, int(round(total_sec / 60.0)))
+        s["minutos"] = mins
+        s["duracion"] = _fmt_duracion_minutos(mins)
+        s["inicio_txt"] = ini.strftime("%H:%M") if ini else "—"
+        s["fin_txt"] = fin.strftime("%H:%M") if fin else "—"
+        s["fecha_txt"] = ini.strftime("%d/%m/%Y") if ini else "—"
+        s["n_eventos"] = len(evs)
+        s["areas_txt"] = ", ".join(sorted(s["areas"])) if s["areas"] else "—"
+        top_mod = sorted(s["modulos"].items(), key=lambda x: -x[1])[:3]
+        s["modulos_txt"] = ", ".join(f"{m} ({n})" for m, n in top_mod) if top_mod else "—"
+        uk = s["user_key"]
+        if uk not in tiempo_por_usuario:
+            tiempo_por_usuario[uk] = {
+                "nombre": s["nombre"],
+                "email": s["email"],
+                "minutos": 0,
+                "sesiones": 0,
+                "eventos": 0,
+            }
+        tiempo_por_usuario[uk]["minutos"] += mins
+        tiempo_por_usuario[uk]["sesiones"] += 1
+        tiempo_por_usuario[uk]["eventos"] += s["n_eventos"]
+
+    ranking = sorted(tiempo_por_usuario.values(), key=lambda x: -x["minutos"])
+    for r in ranking:
+        r["duracion"] = _fmt_duracion_minutos(r["minutos"])
+
+    modulos_sorted = sorted(modulos_count.items(), key=lambda x: -x[1])[: max(1, int(modulos_limit or 12))]
+    areas_sorted = sorted(areas_count.items(), key=lambda x: -x[1])[:10]
+    sesiones_ord = sorted(sesiones, key=lambda s: s["inicio"] or datetime.min, reverse=True)
+    rk_lim = ranking_limit if ranking_limit is not None else 15
+    ses_lim = sesiones_limit if sesiones_limit is not None else 40
+    ranking_out = ranking if rk_lim is None else ranking[:rk_lim]
+    sesiones_out = sesiones_ord if ses_lim is None else sesiones_ord[:ses_lim]
+
+    total_min = sum(r["minutos"] for r in ranking)
+    return {
+        "kpis": {
+            "usuarios": len(ranking),
+            "sesiones": len(sesiones),
+            "eventos": len(eventos),
+            "minutos_online": total_min,
+            "tiempo_online": _fmt_duracion_minutos(total_min),
+            "cierres": cierres_explicitos,
+            "inactividad": cierres_inactividad,
+        },
+        "ranking": ranking_out,
+        "sesiones": sesiones_out,
+        "chart_usuarios_labels": [r["nombre"][:22] for r in ranking[:10]],
+        "chart_usuarios_data": [r["minutos"] for r in ranking[:10]],
+        "chart_modulos_labels": [m for m, _ in modulos_sorted],
+        "chart_modulos_data": [n for _, n in modulos_sorted],
+        "chart_horas_labels": [f"{h:02d}h" for h in range(24)],
+        "chart_horas_data": horas_count,
+        "chart_areas_labels": [a for a, _ in areas_sorted],
+        "chart_areas_data": [n for _, n in areas_sorted],
+    }
+
+
+def _usabilidad_excluir_superadmin(query):
+    """Solo actividad de usuarios que no son superadmin."""
+    return query.filter(
+        db.or_(
+            UsabilidadLog.user_rol.is_(None),
+            UsabilidadLog.user_rol == "",
+            db.func.lower(db.func.trim(UsabilidadLog.user_rol)) != "superadmin",
+        )
+    )
+
+
+def _usabilidad_rango_periodo(fecha_str, periodo="diario"):
+    """
+    Devuelve (inicio_utc, fin_utc, etiqueta, fecha_ref) según periodo.
+    fecha_str = día de referencia (AAAA-MM-DD) en hora Colombia.
+    periodo: diario | semanal | mensual
+    """
+    periodo = (periodo or "diario").strip().lower()
+    if periodo not in ("diario", "semanal", "mensual"):
+        periodo = "diario"
+    try:
+        dia = datetime.strptime(fecha_str, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        dia = _now_colombia().date()
+        fecha_str = dia.strftime("%Y-%m-%d")
+
+    if periodo == "semanal":
+        # Semana lunes–domingo que contiene el día
+        inicio_dia = dia - timedelta(days=dia.weekday())
+        fin_dia = inicio_dia + timedelta(days=7)
+        etiqueta = f"Semana {inicio_dia.strftime('%d/%m/%Y')} – {(fin_dia - timedelta(days=1)).strftime('%d/%m/%Y')}"
+    elif periodo == "mensual":
+        inicio_dia = dia.replace(day=1)
+        if inicio_dia.month == 12:
+            fin_dia = inicio_dia.replace(year=inicio_dia.year + 1, month=1)
+        else:
+            fin_dia = inicio_dia.replace(month=inicio_dia.month + 1)
+        etiqueta = inicio_dia.strftime("%B %Y").capitalize()
+        # Mes en español aproximado
+        meses = {
+            1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+            7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+        }
+        etiqueta = f"{meses.get(inicio_dia.month, inicio_dia.strftime('%m'))} {inicio_dia.year}"
+    else:
+        inicio_dia = dia
+        fin_dia = dia + timedelta(days=1)
+        etiqueta = dia.strftime("%d/%m/%Y")
+        periodo = "diario"
+
+    inicio_local = datetime(inicio_dia.year, inicio_dia.month, inicio_dia.day, 0, 0, 0, tzinfo=_TZ_COLOMBIA)
+    fin_local = datetime(fin_dia.year, fin_dia.month, fin_dia.day, 0, 0, 0, tzinfo=_TZ_COLOMBIA)
+    inicio_utc = inicio_local.astimezone(_TZ_UTC).replace(tzinfo=None)
+    fin_utc = fin_local.astimezone(_TZ_UTC).replace(tzinfo=None)
+    return inicio_utc, fin_utc, etiqueta, fecha_str, periodo
+
+
+def _usabilidad_logs_periodo(fecha_str, periodo="diario", limit=8000):
+    inicio_utc, fin_utc, etiqueta, fecha_ok, periodo_ok = _usabilidad_rango_periodo(fecha_str, periodo)
+    query = _usabilidad_excluir_superadmin(UsabilidadLog.query)
+    query = query.filter(UsabilidadLog.creado_en >= inicio_utc, UsabilidadLog.creado_en < fin_utc)
+    logs = query.order_by(UsabilidadLog.creado_en.desc()).limit(limit).all()
+    return logs, etiqueta, fecha_ok, periodo_ok
+
+
+def _usabilidad_grupos_detalle(logs):
     grupos = []
     grupo_actual = None
     for log in logs:
         creado_local = _as_hora_colombia(log.creado_en) or _now_colombia()
         log.hora_local = creado_local.strftime("%H:%M:%S")
-        dia_key = creado_local.strftime("%Y-%m-%d")
-        dia_label = creado_local.strftime("%d/%m/%Y")
-        if grupo_actual is None or grupo_actual["key"] != dia_key:
-            grupo_actual = {"key": dia_key, "label": dia_label, "registros": []}
+        log.fecha_local = creado_local.strftime("%d/%m/%Y")
+        log.modulo_label = _usabilidad_modulo_de_path(log.path, log.accion)
+        uk = f"{log.user_id or ''}|{(log.user_email or '').lower()}"
+        label = (log.user_nombre or log.user_email or f"Usuario {log.user_id}" or "—").strip()
+        if grupo_actual is None or grupo_actual["key"] != uk:
+            grupo_actual = {
+                "key": uk,
+                "label": label,
+                "email": log.user_email or "",
+                "rol": log.user_rol or "",
+                "registros": [],
+            }
             grupos.append(grupo_actual)
         grupo_actual["registros"].append(log)
+    return grupos
+
+
+def _generar_reporte_usabilidad_xlsx(logs, analytics, etiqueta, periodo):
+    """Genera un Excel detallado de usabilidad (varios sheets)."""
+    from io import BytesIO
+
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    except ImportError as exc:
+        raise RuntimeError("Falta openpyxl para generar el reporte.") from exc
+
+    wb = Workbook()
+    thin = Border(
+        left=Side(style="thin", color="CBD5E1"),
+        right=Side(style="thin", color="CBD5E1"),
+        top=Side(style="thin", color="CBD5E1"),
+        bottom=Side(style="thin", color="CBD5E1"),
+    )
+    header_fill = PatternFill("solid", fgColor="1E293B")
+    header_font = Font(color="F8FAFC", bold=True)
+    title_font = Font(bold=True, size=13)
+
+    def _style_header(ws, row, cols):
+        for c in range(1, cols + 1):
+            cell = ws.cell(row=row, column=c)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = thin
+
+    # --- Resumen ---
+    ws = wb.active
+    ws.title = "Resumen"
+    ws["A1"] = "Reporte de usabilidad — LockerBeef"
+    ws["A1"].font = title_font
+    ws["A2"] = f"Periodo: {periodo}"
+    ws["A3"] = f"Rango: {etiqueta}"
+    ws["A4"] = f"Generado: {_now_colombia().strftime('%d/%m/%Y %H:%M')}"
+    ws["A5"] = "Nota: no incluye actividad de superadmin."
+    k = analytics.get("kpis") or {}
+    rows_kpi = [
+        ("Usuarios activos", k.get("usuarios", 0)),
+        ("Tiempo en línea", k.get("tiempo_online", "0 min")),
+        ("Sesiones", k.get("sesiones", 0)),
+        ("Eventos", k.get("eventos", 0)),
+        ("Cierres de sesión", k.get("cierres", 0)),
+        ("Desconexiones por inactividad", k.get("inactividad", 0)),
+    ]
+    ws["A7"] = "Indicador"
+    ws["B7"] = "Valor"
+    _style_header(ws, 7, 2)
+    for i, (lab, val) in enumerate(rows_kpi, start=8):
+        ws.cell(row=i, column=1, value=lab).border = thin
+        ws.cell(row=i, column=2, value=val).border = thin
+    ws.column_dimensions["A"].width = 36
+    ws.column_dimensions["B"].width = 22
+
+    # --- Tiempo por usuario ---
+    ws2 = wb.create_sheet("Tiempo por usuario")
+    headers2 = ["Usuario", "Email", "Minutos online", "Duración", "Sesiones", "Eventos"]
+    for i, h in enumerate(headers2, start=1):
+        ws2.cell(row=1, column=i, value=h)
+    _style_header(ws2, 1, len(headers2))
+    for r_i, r in enumerate(analytics.get("ranking") or [], start=2):
+        vals = [r.get("nombre"), r.get("email"), r.get("minutos"), r.get("duracion"), r.get("sesiones"), r.get("eventos")]
+        for c_i, v in enumerate(vals, start=1):
+            cell = ws2.cell(row=r_i, column=c_i, value=v)
+            cell.border = thin
+    for col, w in zip("ABCDEF", (28, 34, 16, 14, 12, 12)):
+        ws2.column_dimensions[col].width = w
+
+    # --- Sesiones ---
+    ws3 = wb.create_sheet("Sesiones")
+    headers3 = ["Fecha", "Usuario", "Email", "Inicio", "Fin", "Duración", "Cierre", "Eventos", "Áreas", "Módulos top"]
+    for i, h in enumerate(headers3, start=1):
+        ws3.cell(row=1, column=i, value=h)
+    _style_header(ws3, 1, len(headers3))
+    for r_i, s in enumerate(analytics.get("sesiones") or [], start=2):
+        vals = [
+            s.get("fecha_txt"), s.get("nombre"), s.get("email"), s.get("inicio_txt"),
+            s.get("fin_txt"), s.get("duracion"), s.get("cierre"), s.get("n_eventos"),
+            s.get("areas_txt"), s.get("modulos_txt"),
+        ]
+        for c_i, v in enumerate(vals, start=1):
+            cell = ws3.cell(row=r_i, column=c_i, value=v)
+            cell.border = thin
+    for col, w in zip("ABCDEFGHIJ", (12, 24, 30, 10, 10, 12, 28, 10, 24, 40)):
+        ws3.column_dimensions[col].width = w
+
+    # --- Uso por módulo ---
+    ws4 = wb.create_sheet("Uso por modulo")
+    ws4.cell(row=1, column=1, value="Módulo")
+    ws4.cell(row=1, column=2, value="Eventos")
+    _style_header(ws4, 1, 2)
+    for r_i, (lab, n) in enumerate(
+        zip(analytics.get("chart_modulos_labels") or [], analytics.get("chart_modulos_data") or []),
+        start=2,
+    ):
+        ws4.cell(row=r_i, column=1, value=lab).border = thin
+        ws4.cell(row=r_i, column=2, value=n).border = thin
+    ws4.column_dimensions["A"].width = 34
+    ws4.column_dimensions["B"].width = 12
+
+    # --- Eventos detalle ---
+    ws5 = wb.create_sheet("Eventos detalle")
+    headers5 = ["Fecha", "Hora", "Usuario", "Email", "Rol", "Área", "Módulo", "Acción", "Método", "Ruta"]
+    for i, h in enumerate(headers5, start=1):
+        ws5.cell(row=1, column=i, value=h)
+    _style_header(ws5, 1, len(headers5))
+    # Cronológico ascendente para lectura del reporte
+    logs_asc = sorted(logs, key=lambda x: x.creado_en or datetime.min)
+    for r_i, log in enumerate(logs_asc, start=2):
+        local = _as_hora_colombia(log.creado_en) or _now_colombia()
+        vals = [
+            local.strftime("%d/%m/%Y"),
+            local.strftime("%H:%M:%S"),
+            log.user_nombre or "",
+            log.user_email or "",
+            log.user_rol or "",
+            log.area or "",
+            _usabilidad_modulo_de_path(log.path, log.accion),
+            log.accion or "",
+            log.metodo or "",
+            log.path or "",
+        ]
+        for c_i, v in enumerate(vals, start=1):
+            cell = ws5.cell(row=r_i, column=c_i, value=v)
+            cell.border = thin
+    for col, w in zip("ABCDEFGHIJ", (12, 10, 24, 30, 12, 16, 22, 36, 10, 40)):
+        ws5.column_dimensions[col].width = w
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@bp.route("/dashboard/usabilidad")
+@login_required
+@_superadmin_required
+def usabilidad():
+    """Analítica gráfica de usabilidad (sin superadmin). Solo filtro por fecha."""
+    fecha = (request.args.get("fecha") or "").strip()
+    if not fecha:
+        fecha = _now_colombia().strftime("%Y-%m-%d")
+
+    logs, etiqueta, fecha, _periodo = _usabilidad_logs_periodo(fecha, "diario", limit=3000)
+    analytics = _analizar_usabilidad(logs)
+    grupos = _usabilidad_grupos_detalle(logs)
 
     return render_template(
         "usabilidad.html",
         grupos=grupos,
         logs=logs,
-        usuarios_filtro=usuarios_filtro,
-        filtro_user_id=user_id,
-        filtro_q=q,
+        analytics=analytics,
         filtro_fecha=fecha,
+        periodo_etiqueta=etiqueta,
         total=len(logs),
+    )
+
+
+@bp.route("/dashboard/usabilidad/reporte")
+@login_required
+@_superadmin_required
+def usabilidad_reporte():
+    """Descarga reporte Excel detallado: diario | semanal | mensual."""
+    fecha = (request.args.get("fecha") or "").strip() or _now_colombia().strftime("%Y-%m-%d")
+    periodo = (request.args.get("periodo") or "diario").strip().lower()
+    if periodo not in ("diario", "semanal", "mensual"):
+        periodo = "diario"
+
+    logs, etiqueta, fecha_ok, periodo_ok = _usabilidad_logs_periodo(fecha, periodo, limit=20000)
+    analytics = _analizar_usabilidad(
+        logs,
+        ranking_limit=None,
+        sesiones_limit=None,
+        modulos_limit=50,
+    )
+    try:
+        buf = _generar_reporte_usabilidad_xlsx(logs, analytics, etiqueta, periodo_ok)
+    except RuntimeError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("main.usabilidad", fecha=fecha_ok))
+
+    safe_label = re.sub(r"[^\w\-]+", "_", etiqueta)[:60]
+    filename = f"usabilidad_{periodo_ok}_{safe_label}.xlsx"
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
